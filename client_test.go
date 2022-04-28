@@ -18,8 +18,6 @@ var redisOption = redis.Options{
 
 var rdb = redis.NewClient(&redisOption)
 
-var dc, derr = NewClient(rdb, NewDefaultOptions())
-
 func clearCache() {
 	err := rdb.Del(rdb.Context(), rdbKey).Err()
 	if err != nil {
@@ -33,7 +31,9 @@ func genDataFunc(value string, sleepMilli int) func() (string, error) {
 		return value, nil
 	}
 }
-func TestObtain(t *testing.T) {
+func TestWeakFetch(t *testing.T) {
+	dc, _ := NewClient(rdb, NewDefaultOptions())
+
 	clearCache()
 	began := time.Now()
 	expected := "value1"
@@ -57,24 +57,26 @@ func TestObtain(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	v, err = dc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 }
 
-func TestStrongObtain(t *testing.T) {
+func TestStrongFetch(t *testing.T) {
 	clearCache()
+	dc, _ := NewClient(rdb, NewDefaultOptions())
+	dc.Options.StrongConsistency = true
 	began := time.Now()
 	expected := "value1"
 	go func() {
-		v, err := dc.strongFetch(rdbKey, 60, genDataFunc(expected, 200))
+		v, err := dc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
 		assert.Nil(t, err)
 		assert.Equal(t, expected, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := dc.strongFetch(rdbKey, 60, genDataFunc(expected, 200))
+	v, err := dc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
@@ -84,12 +86,12 @@ func TestStrongObtain(t *testing.T) {
 
 	began = time.Now()
 	nv := "value2"
-	v, err = dc.strongFetch(rdbKey, 60, genDataFunc(nv, 200))
+	v, err = dc.Fetch(rdbKey, 60, genDataFunc(nv, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	v, err = dc.strongFetch(rdbKey, 60, genDataFunc("ignored", 200))
+	v, err = dc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 

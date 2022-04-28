@@ -36,13 +36,13 @@ type Options struct {
 
 // NewDefaultOptions return default options
 func NewDefaultOptions() Options {
-	return Options{Delay: 10, EmptyExpire: 60, LockExpire: 3}
+	return Options{Delay: 10, EmptyExpire: 60, LockExpire: 3, RandomExpireAdjustment: 0.1}
 }
 
 // Client delay client
 type Client struct {
 	rdb     *redis.Client
-	options Options
+	Options Options
 	group   singleflight.Group
 }
 
@@ -51,12 +51,12 @@ func NewClient(rdb *redis.Client, options Options) (*Client, error) {
 	if options.Delay == 0 || options.LockExpire == 0 {
 		return nil, errors.New("cache options error: delay and lock expire should not be 0")
 	}
-	return &Client{rdb: rdb, options: options}, nil
+	return &Client{rdb: rdb, Options: options}, nil
 }
 
 // Delete tag a key deleted, then the key will expire after delay time.
 func (c *Client) Delete(key string) error {
-	if c.options.CacheDeleteDisabled {
+	if c.Options.CacheDeleteDisabled {
 		return nil
 	}
 	debugf("delete: key=%s", key)
@@ -68,18 +68,18 @@ end
 redis.call('HSET', KEYS[1], 'lockUtil', ARGV[1])
 redis.call('HDEL', KEYS[1], 'lockOwner')
 redis.call('EXPIRE', KEYS[1], ARGV[2])
-	`, []string{key}, []interface{}{time.Now().Add(-1 * time.Second).Unix(), c.options.Delay})
+	`, []string{key}, []interface{}{time.Now().Add(-1 * time.Second).Unix(), c.Options.Delay})
 	return err
 }
 
 // Fetch returns the value store in cache indexed by the key.
 // If the key doest not exists, call fn to get result, store it in cache, then return.
 func (c *Client) Fetch(key string, expire int, fn func() (string, error)) (string, error) {
-	ex := expire - c.options.Delay - int(rand.Float32()*c.options.RandomExpireAdjustment*float32(expire))
+	ex := expire - c.Options.Delay - int(rand.Float32()*c.Options.RandomExpireAdjustment*float32(expire))
 	v, err, _ := c.group.Do(key, func() (interface{}, error) {
-		if c.options.CacheReadDisabled {
+		if c.Options.CacheReadDisabled {
 			return fn()
-		} else if c.options.StrongConsistency {
+		} else if c.Options.StrongConsistency {
 			return c.strongFetch(key, ex, fn)
 		}
 		return c.weakFetch(key, ex, fn)
@@ -100,7 +100,7 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 			return { v, 'LOCKED' }
 		end
 		return {v, lu}
-		`, []string{key}, []interface{}{now() + int64(c.options.LockExpire), owner})
+		`, []string{key}, []interface{}{now() + int64(c.Options.LockExpire), owner})
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +126,7 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 			return "", err
 		}
 		if result == "" {
-			expire = c.options.EmptyExpire
+			expire = c.Options.EmptyExpire
 		}
 		_, err = callLua(c.rdb, `-- weakFetch set
 	local o = redis.call('HGET', KEYS[1], 'lockOwner')
@@ -162,7 +162,7 @@ func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) 
 			return { v, 'LOCKED' }
 		end
 		return {v, lu}
-		`, []string{key}, []interface{}{now() + int64(c.options.LockExpire), owner})
+		`, []string{key}, []interface{}{now() + int64(c.Options.LockExpire), owner})
 		if err != nil {
 			return nil, err
 		}
@@ -188,7 +188,7 @@ func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) 
 		return "", err
 	}
 	if result == "" {
-		expire = c.options.EmptyExpire
+		expire = c.Options.EmptyExpire
 	}
 	_, err = callLua(c.rdb, `-- strongFetch Set
 	local o = redis.call('HGET', KEYS[1], 'lockOwner')
