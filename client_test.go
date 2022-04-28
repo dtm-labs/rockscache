@@ -18,7 +18,7 @@ var redisOption = redis.Options{
 
 var rdb = redis.NewClient(&redisOption)
 
-var dc = NewClient(rdb)
+var dc, derr = NewClient(rdb, NewDefaultOptions())
 
 func clearCache() {
 	err := rdb.Del(rdb.Context(), rdbKey).Err()

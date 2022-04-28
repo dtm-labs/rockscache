@@ -1,29 +1,50 @@
 package rockscache
 
 import (
+	"errors"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/lithammer/shortuuid"
 )
 
-// Client delay client
-type Client struct {
-	rdb *redis.Client
-	// Delay is the delay delete time. unit seconds. default is 10s
+// Optiions represents the options for rockscache client
+type Options struct {
+	// Delay is the delay delete time for keys that are tag deleted. unit seconds. default is 10s
 	Delay int
 	// EmptyExpire is the expire time for empty result. unit seconds. default is 60s
 	EmptyExpire int
-	// LockExpire is the expire time for lock. unit seconds. default is 3s
+	// LockExpire is the expire time for the lock which is allocated when updating cache. unit seconds. default is 3s
+	// should be set to the max of the underling data calculating time.
 	LockExpire int
+	// CacheReadDisabled is the flag to disable read cache. default is false
+	// when redis is down, set this flat to downgrade.
+	CacheReadDisabled bool
+	// CacheWriteDisabled is the flag to disable delete cache. default is false
+	// when redis is down, set this flat to downgrade.
+	CacheDeleteDisabled bool
+}
+
+// NewDefaultOptions return default options
+func NewDefaultOptions() Options {
+	return Options{Delay: 10, EmptyExpire: 60, LockExpire: 3}
+}
+
+// Client delay client
+type Client struct {
+	rdb     *redis.Client
+	options Options
 }
 
 // NewClient new a delay client
-func NewClient(rdb *redis.Client) *Client {
-	return &Client{rdb: rdb, Delay: 10, EmptyExpire: 60, LockExpire: 3}
+func NewClient(rdb *redis.Client, options Options) (*Client, error) {
+	if options.Delay == 0 || options.LockExpire == 0 {
+		return nil, errors.New("cache options error: delay and lock expire should not be 0")
+	}
+	return &Client{rdb: rdb, options: options}, nil
 }
 
-// Delete delay delete a key
+// Delete tag a key deleted, then the key will expire after delay time.
 func (c *Client) Delete(key string) error {
 	debugf("delay.Delete: key=%s", key)
 	_, err := callLua(c.rdb, ` --  delay.Delete
@@ -34,7 +55,7 @@ end
 redis.call('HSET', KEYS[1], 'lockUtil', ARGV[1])
 redis.call('HDEL', KEYS[1], 'lockOwner')
 redis.call('EXPIRE', KEYS[1], ARGV[2])
-	`, []string{key}, []interface{}{time.Now().Add(-1 * time.Second).Unix(), c.Delay})
+	`, []string{key}, []interface{}{time.Now().Add(-1 * time.Second).Unix(), c.options.Delay})
 	return err
 }
 
@@ -52,7 +73,7 @@ func (c *Client) Obtain(key string, expire int, fn func() (string, error)) (stri
 			return { v, 'LOCKED' }
 		end
 		return {v, lu}
-		`, []string{key}, []interface{}{now() + int64(c.LockExpire), owner})
+		`, []string{key}, []interface{}{now() + int64(c.options.LockExpire), owner})
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +99,7 @@ func (c *Client) Obtain(key string, expire int, fn func() (string, error)) (stri
 			return "", err
 		}
 		if result == "" {
-			expire = c.EmptyExpire
+			expire = c.options.EmptyExpire
 		}
 		_, err = callLua(c.rdb, `-- delay.Set
 	local o = redis.call('HGET', KEYS[1], 'lockOwner')
@@ -115,7 +136,7 @@ func (c *Client) StrongObtain(key string, expire int, fn func() (string, error))
 			return { v, 'LOCKED' }
 		end
 		return {v, lu}
-		`, []string{key}, []interface{}{now() + int64(c.LockExpire), owner})
+		`, []string{key}, []interface{}{now() + int64(c.options.LockExpire), owner})
 		if err != nil {
 			return nil, err
 		}
@@ -141,7 +162,7 @@ func (c *Client) StrongObtain(key string, expire int, fn func() (string, error))
 		return "", err
 	}
 	if result == "" {
-		expire = c.EmptyExpire
+		expire = c.options.EmptyExpire
 	}
 	_, err = callLua(c.rdb, `-- delay.Set
 	local o = redis.call('HGET', KEYS[1], 'lockOwner')
