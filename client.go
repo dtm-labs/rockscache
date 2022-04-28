@@ -2,10 +2,12 @@ package rockscache
 
 import (
 	"errors"
+	"math/rand"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/lithammer/shortuuid"
+	"golang.org/x/sync/singleflight"
 )
 
 // Optiions represents the options for rockscache client
@@ -17,6 +19,10 @@ type Options struct {
 	// LockExpire is the expire time for the lock which is allocated when updating cache. unit seconds. default is 3s
 	// should be set to the max of the underling data calculating time.
 	LockExpire int
+	// RandomExpireAdjustment is the random adjustment for the expire time. default 0.1
+	// if the expire time is set to 600s, and this value is set to 0.1, then the actual expire time will be 540s - 600s
+	// solve the problem of cache avalanche.
+	RandomExpireAdjustment float32
 	// CacheReadDisabled is the flag to disable read cache. default is false
 	// when redis is down, set this flat to downgrade.
 	CacheReadDisabled bool
@@ -37,6 +43,7 @@ func NewDefaultOptions() Options {
 type Client struct {
 	rdb     *redis.Client
 	options Options
+	group   singleflight.Group
 }
 
 // NewClient new a delay client
@@ -52,8 +59,8 @@ func (c *Client) Delete(key string) error {
 	if c.options.CacheDeleteDisabled {
 		return nil
 	}
-	debugf("delay.Delete: key=%s", key)
-	_, err := callLua(c.rdb, ` --  delay.Delete
+	debugf("delete: key=%s", key)
+	_, err := callLua(c.rdb, ` --  delete
 local v = redis.call('HGET', KEYS[1], 'value')
 if v == false then
 	return
@@ -68,20 +75,23 @@ redis.call('EXPIRE', KEYS[1], ARGV[2])
 // Fetch returns the value store in cache indexed by the key.
 // If the key doest not exists, call fn to get result, store it in cache, then return.
 func (c *Client) Fetch(key string, expire int, fn func() (string, error)) (string, error) {
-	if c.options.CacheReadDisabled {
-		return fn()
-	}
-	if c.options.StrongConsistency {
-		return c.strongFetch(key, expire, fn)
-	}
-	return c.normalFetch(key, expire, fn)
+	ex := expire - c.options.Delay - int(rand.Float32()*c.options.RandomExpireAdjustment*float32(expire))
+	v, err, _ := c.group.Do(key, func() (interface{}, error) {
+		if c.options.CacheReadDisabled {
+			return fn()
+		} else if c.options.StrongConsistency {
+			return c.strongFetch(key, ex, fn)
+		}
+		return c.weakFetch(key, ex, fn)
+	})
+	return v.(string), err
 }
 
-func (c *Client) normalFetch(key string, expire int, fn func() (string, error)) (string, error) {
-	debugf("delay.Obtain: key=%s", key)
+func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (string, error) {
+	debugf("weakFetch: key=%s", key)
 	owner := shortuuid.New()
 	redisGet := func() ([]interface{}, error) {
-		res, err := callLua(c.rdb, ` -- delay.Obtain
+		res, err := callLua(c.rdb, ` -- weakFetch
 		local v = redis.call('HGET', KEYS[1], 'value')
 		local lu = redis.call('HGET', KEYS[1], 'lockUtil')
 		if lu ~= false and tonumber(lu) < tonumber(ARGV[1]) or lu == false and v == false then
@@ -118,7 +128,7 @@ func (c *Client) normalFetch(key string, expire int, fn func() (string, error)) 
 		if result == "" {
 			expire = c.options.EmptyExpire
 		}
-		_, err = callLua(c.rdb, `-- delay.Set
+		_, err = callLua(c.rdb, `-- weakFetch set
 	local o = redis.call('HGET', KEYS[1], 'lockOwner')
 	if o ~= ARGV[2] then
 			return
@@ -138,10 +148,10 @@ func (c *Client) normalFetch(key string, expire int, fn func() (string, error)) 
 }
 
 func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) (string, error) {
-	debugf("delay.Obtain: key=%s", key)
+	debugf("strongFetch: key=%s", key)
 	owner := shortuuid.New()
 	redisGet := func() ([]interface{}, error) {
-		res, err := callLua(c.rdb, ` -- delay.Obtain
+		res, err := callLua(c.rdb, ` -- strongFetch
 		local v = redis.call('HGET', KEYS[1], 'value')
 		local lu = redis.call('HGET', KEYS[1], 'lockUtil')
 
@@ -180,7 +190,7 @@ func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) 
 	if result == "" {
 		expire = c.options.EmptyExpire
 	}
-	_, err = callLua(c.rdb, `-- delay.Set
+	_, err = callLua(c.rdb, `-- strongFetch Set
 	local o = redis.call('HGET', KEYS[1], 'lockOwner')
 	if o ~= ARGV[2] then
 			return
