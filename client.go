@@ -20,9 +20,12 @@ type Options struct {
 	// CacheReadDisabled is the flag to disable read cache. default is false
 	// when redis is down, set this flat to downgrade.
 	CacheReadDisabled bool
-	// CacheWriteDisabled is the flag to disable delete cache. default is false
+	// CacheDeleteDisabled is the flag to disable delete cache. default is false
 	// when redis is down, set this flat to downgrade.
 	CacheDeleteDisabled bool
+	// StrongConsistency is the flag to enable strong consistency. default is false
+	// if enabled, the Fetch result will be consistent with the db result, but performance is bad.
+	StrongConsistency bool
 }
 
 // NewDefaultOptions return default options
@@ -46,6 +49,9 @@ func NewClient(rdb *redis.Client, options Options) (*Client, error) {
 
 // Delete tag a key deleted, then the key will expire after delay time.
 func (c *Client) Delete(key string) error {
+	if c.options.CacheDeleteDisabled {
+		return nil
+	}
 	debugf("delay.Delete: key=%s", key)
 	_, err := callLua(c.rdb, ` --  delay.Delete
 local v = redis.call('HGET', KEYS[1], 'value')
@@ -59,8 +65,19 @@ redis.call('EXPIRE', KEYS[1], ARGV[2])
 	return err
 }
 
-// Obtain obtain a key. If value is empty, call fn to get value.
-func (c *Client) Obtain(key string, expire int, fn func() (string, error)) (string, error) {
+// Fetch returns the value store in cache indexed by the key.
+// If the key doest not exists, call fn to get result, store it in cache, then return.
+func (c *Client) Fetch(key string, expire int, fn func() (string, error)) (string, error) {
+	if c.options.CacheReadDisabled {
+		return fn()
+	}
+	if c.options.StrongConsistency {
+		return c.strongFetch(key, expire, fn)
+	}
+	return c.normalFetch(key, expire, fn)
+}
+
+func (c *Client) normalFetch(key string, expire int, fn func() (string, error)) (string, error) {
 	debugf("delay.Obtain: key=%s", key)
 	owner := shortuuid.New()
 	redisGet := func() ([]interface{}, error) {
@@ -120,8 +137,7 @@ func (c *Client) Obtain(key string, expire int, fn func() (string, error)) (stri
 	return r[0].(string), nil
 }
 
-// StrongObtain obtain a key. If value is empty, call fn to get value.
-func (c *Client) StrongObtain(key string, expire int, fn func() (string, error)) (string, error) {
+func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) (string, error) {
 	debugf("delay.Obtain: key=%s", key)
 	owner := shortuuid.New()
 	redisGet := func() ([]interface{}, error) {

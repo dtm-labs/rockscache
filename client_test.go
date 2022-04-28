@@ -38,13 +38,13 @@ func TestObtain(t *testing.T) {
 	began := time.Now()
 	expected := "value1"
 	go func() {
-		v, err := dc.Obtain(rdbKey, 60, genDataFunc(expected, 200))
+		v, err := dc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
 		assert.Nil(t, err)
 		assert.Equal(t, expected, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := dc.Obtain(rdbKey, 60, genDataFunc(expected, 200))
+	v, err := dc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
@@ -53,12 +53,12 @@ func TestObtain(t *testing.T) {
 	assert.Nil(t, err)
 
 	nv := "value2"
-	v, err = dc.Obtain(rdbKey, 60, genDataFunc(nv, 200))
+	v, err = dc.Fetch(rdbKey, 60, genDataFunc(nv, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 
 	time.Sleep(200 * time.Millisecond)
-	v, err = dc.Obtain(rdbKey, 60, genDataFunc("ignored", 200))
+	v, err = dc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 }
@@ -68,13 +68,13 @@ func TestStrongObtain(t *testing.T) {
 	began := time.Now()
 	expected := "value1"
 	go func() {
-		v, err := dc.StrongObtain(rdbKey, 60, genDataFunc(expected, 200))
+		v, err := dc.strongFetch(rdbKey, 60, genDataFunc(expected, 200))
 		assert.Nil(t, err)
 		assert.Equal(t, expected, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := dc.StrongObtain(rdbKey, 60, genDataFunc(expected, 200))
+	v, err := dc.strongFetch(rdbKey, 60, genDataFunc(expected, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
@@ -84,12 +84,12 @@ func TestStrongObtain(t *testing.T) {
 
 	began = time.Now()
 	nv := "value2"
-	v, err = dc.StrongObtain(rdbKey, 60, genDataFunc(nv, 200))
+	v, err = dc.strongFetch(rdbKey, 60, genDataFunc(nv, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	v, err = dc.StrongObtain(rdbKey, 60, genDataFunc("ignored", 200))
+	v, err = dc.strongFetch(rdbKey, 60, genDataFunc("ignored", 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 
