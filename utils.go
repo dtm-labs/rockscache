@@ -23,7 +23,7 @@ func now() int64 {
 }
 
 func callLua(rdb *redis.Client, script string, keys []string, args []interface{}) (interface{}, error) {
-	debugf("DelayCallLua: script=%s, keys=%v, args=%v", script, keys, args)
+	debugf("callLua: script=%s, keys=%v, args=%v", script, keys, args)
 	v, err := rdb.Eval(rdb.Context(), script, keys, args).Result()
 	if err == redis.Nil {
 		err = nil

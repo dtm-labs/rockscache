@@ -1,3 +1,11 @@
+![license](https://img.shields.io/github/license/dtm-labs/rockscache)
+![Build Status](https://github.com/dtm-labs/rockscache/actions/workflows/tests.yml/badge.svg?branch=main)
+[![codecov](https://codecov.io/gh/dtm-labs/rockscache/branch/main/graph/badge.svg?token=UKKEYQLP3F)](https://codecov.io/gh/dtm-labs/rockscache)
+[![Go Report Card](https://goreportcard.com/badge/github.com/dtm-labs/rockscache)](https://goreportcard.com/report/github.com/dtm-labs/rockscache)
+[![Go Reference](https://pkg.go.dev/badge/github.com/dtm-labs/rockscache.svg)](https://pkg.go.dev/github.com/dtm-labs/rockscache)
+
+简体中文 | [English](./README.md)
+
 # RocksCache
 首个确保缓存与数据库一致性的缓存库。
 
@@ -15,8 +23,8 @@ rdb := redis.NewClient(&redis.Options{
 	Password: "",
 })
 
-dc := rockscache.NewClient(rdb, NewDefaultOptions())
-v, err := dc.Fetch("key1", 300, func()(string, error) {
+rc := rockscache.NewClient(rdb, NewDefaultOptions())
+v, err := rc.Fetch("key1", 300, func()(string, error) {
   time.Sleep(1 * time.Second)
   return "value1", nil
 })
@@ -39,7 +47,7 @@ v, err := dc.Fetch("key1", 300, func()(string, error) {
 ``` go
 	app.POST(BusiAPI+"/delayDeleteKey", utils.WrapHandler(func(c *gin.Context) interface{} {
 		req := MustReqFrom(c)
-		err := dc.DelayDelete(req.Key)
+		err := rc.DelayDelete(req.Key)
 		logger.FatalIfError(err)
 		return nil
 	}))

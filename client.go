@@ -121,10 +121,14 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 	}
 	getNew := func() (string, error) {
 		result, err := fn()
-		if err != nil || result == "" && c.Options.EmptyExpire == 0 {
+		if err != nil {
 			return "", err
 		}
 		if result == "" {
+			if c.Options.EmptyExpire == 0 { // if empty expire is 0, then delete the key
+				err = c.DelayDelete(key)
+				return "", err
+			}
 			expire = c.Options.EmptyExpire
 		}
 		_, err = callLua(c.rdb, `-- weakFetch set
@@ -183,10 +187,15 @@ func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) 
 	}
 
 	result, err := fn()
-	if err != nil || result == "" && c.Options.EmptyExpire == 0 {
+	if err != nil {
 		return "", err
 	}
 	if result == "" {
+		if c.Options.EmptyExpire == 0 { // if empty expire is 0, then delete the key
+			err = c.DelayDelete(key)
+			return "", err
+		}
+
 		expire = c.Options.EmptyExpire
 	}
 	_, err = callLua(c.rdb, `-- strongFetch Set

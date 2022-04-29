@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var rdbKey = "t1-id-1"
+var rdbKey = "client-test-key"
 
 var rdb = redis.NewClient(&redis.Options{
 	Addr:     "localhost:6379",
@@ -17,7 +17,7 @@ var rdb = redis.NewClient(&redis.Options{
 })
 
 func clearCache() {
-	err := rdb.Del(rdb.Context(), rdbKey).Err()
+	err := rdb.FlushAll(rdb.Context()).Err()
 	if err != nil {
 		panic(err)
 	}
@@ -29,67 +29,73 @@ func genDataFunc(value string, sleepMilli int) func() (string, error) {
 		return value, nil
 	}
 }
+
+func init() {
+	SetVerbose(true)
+}
 func TestWeakFetch(t *testing.T) {
-	dc := NewClient(rdb, NewDefaultOptions())
+	rc := NewClient(rdb, NewDefaultOptions())
 
 	clearCache()
 	began := time.Now()
 	expected := "value1"
 	go func() {
-		v, err := dc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
+		dc2 := NewClient(rdb, NewDefaultOptions())
+		v, err := dc2.Fetch(rdbKey, 60, genDataFunc(expected, 200))
 		assert.Nil(t, err)
 		assert.Equal(t, expected, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := dc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
+	v, err := rc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	err = dc.DelayDelete(rdbKey)
+	err = rc.DelayDelete(rdbKey)
 	assert.Nil(t, err)
 
 	nv := "value2"
-	v, err = dc.Fetch(rdbKey, 60, genDataFunc(nv, 200))
+	v, err = rc.Fetch(rdbKey, 60, genDataFunc(nv, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 
 	time.Sleep(300 * time.Millisecond)
-	v, err = dc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
+	v, err = rc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 }
 
 func TestStrongFetch(t *testing.T) {
 	clearCache()
-	dc := NewClient(rdb, NewDefaultOptions())
-	dc.Options.StrongConsistency = true
+	rc := NewClient(rdb, NewDefaultOptions())
+	rc.Options.StrongConsistency = true
 	began := time.Now()
 	expected := "value1"
 	go func() {
-		v, err := dc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
+		dc2 := NewClient(rdb, NewDefaultOptions())
+		v, err := dc2.Fetch(rdbKey, 60, genDataFunc(expected, 200))
 		assert.Nil(t, err)
 		assert.Equal(t, expected, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := dc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
+	v, err := rc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	err = dc.DelayDelete(rdbKey)
+	err = rc.DelayDelete(rdbKey)
 	assert.Nil(t, err)
 
 	began = time.Now()
 	nv := "value2"
-	v, err = dc.Fetch(rdbKey, 60, genDataFunc(nv, 200))
+	v, err = rc.Fetch(rdbKey, 60, genDataFunc(nv, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	v, err = dc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
+	v, err = rc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 
