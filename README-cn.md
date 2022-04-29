@@ -12,7 +12,7 @@
 ## 一致性问题
 绝大多数应用为了降低数据库负载，增加并发，一般都会引入Redis缓存。引入缓存后，由于数据存储在两个地方，因此就存在分布式系统中的一致性问题。目前看到的现有的缓存方案，都无法解决下面这个数据不一致的场景：
 
-<img alt="scenario" src="https://pica.zhimg.com/80/v2-da95e008d2cd53d0e00e4a463e46b010_1440w.png" height=250 />
+<img alt="scenario" src="https://pica.zhimg.com/80/v2-da95e008d2cd53d0e00e4a463e46b010_1440w.png" height=400 />
 
 本项目提供了一种彻底解决一致性问题的方案，示例代码如下：
 
