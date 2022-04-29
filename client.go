@@ -130,7 +130,7 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 		}
 		if result == "" {
 			if c.Options.EmptyExpire == 0 { // if empty expire is 0, then delete the key
-				err = c.DelayDelete(key)
+				err = c.rdb.Del(c.rdb.Context(), key).Err()
 				return "", err
 			}
 			expire = c.Options.EmptyExpire
@@ -204,7 +204,7 @@ func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) 
 	}
 	if result == "" {
 		if c.Options.EmptyExpire == 0 { // if empty expire is 0, then delete the key
-			err = c.DelayDelete(key)
+			err = c.rdb.Del(c.rdb.Context(), key).Err()
 			return "", err
 		}
 
