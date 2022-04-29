@@ -9,6 +9,7 @@ import (
 
 var verbose = false
 
+// SetVerbose sets verbose mode.
 func SetVerbose(v bool) {
 	verbose = v
 }

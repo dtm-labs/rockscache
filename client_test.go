@@ -47,7 +47,7 @@ func TestWeakFetch(t *testing.T) {
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := rc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
+	v, err := rc.Fetch(rdbKey, 60, genDataFunc(expected, 201))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)

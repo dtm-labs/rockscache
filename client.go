@@ -4,12 +4,16 @@ import (
 	"math/rand"
 	"time"
 
+	"log"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/lithammer/shortuuid"
 	"golang.org/x/sync/singleflight"
 )
 
-// Optiions represents the options for rockscache client
+const locked = "LOCKED"
+
+// Options represents the options for rockscache client
 type Options struct {
 	// Delay is the delay delete time for keys that are tag deleted. unit seconds. default is 10s
 	Delay int
@@ -108,7 +112,7 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 	r, err := redisGet()
 	debugf("r is: %v", r)
 
-	for err == nil && r[0] == nil && r[1].(string) != "LOCKED" {
+	for err == nil && r[0] == nil && r[1].(string) != locked {
 		debugf("empty result for %s lock by other, so sleep 1s", key)
 		time.Sleep(1 * time.Second)
 		r, err = redisGet()
@@ -116,7 +120,7 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 	if err != nil {
 		return "", err
 	}
-	if r[1] != "LOCKED" {
+	if r[1] != locked {
 		return r[0].(string), nil
 	}
 	getNew := func() (string, error) {
@@ -146,7 +150,15 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 	if r[0] == nil {
 		return getNew()
 	}
-	go getNew()
+	go func() {
+		defer func() {
+			x := recover()
+			if x != nil {
+				log.Printf("panic in weakFetch-getNew %v", x)
+			}
+		}()
+		_, _ = getNew()
+	}()
 	return r[0].(string), nil
 }
 
@@ -174,7 +186,7 @@ func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) 
 	r, err := redisGet()
 	debugf("r is: %v", r)
 
-	for err == nil && r[1] != nil && r[1] != "LOCKED" { // locked by other
+	for err == nil && r[1] != nil && r[1] != locked { // locked by other
 		debugf("lock by other, so sleep 1s")
 		time.Sleep(1 * time.Second)
 		r, err = redisGet()
