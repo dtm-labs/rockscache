@@ -1,2 +1,8 @@
-# rockscache
-a redis caching library that prevents cache penetration/avalanche/breakdown and keeps consistent with db
+English | [简体中文](./README-cn.md)
+
+# RocksCache
+The first redis caching library that keeps consistent with db
+
+
+
+

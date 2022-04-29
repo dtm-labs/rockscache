@@ -10,13 +10,11 @@ import (
 
 var rdbKey = "t1-id-1"
 
-var redisOption = redis.Options{
+var rdb = redis.NewClient(&redis.Options{
 	Addr:     "localhost:6379",
 	Username: "root",
 	Password: "",
-}
-
-var rdb = redis.NewClient(&redisOption)
+})
 
 func clearCache() {
 	err := rdb.Del(rdb.Context(), rdbKey).Err()
@@ -32,7 +30,7 @@ func genDataFunc(value string, sleepMilli int) func() (string, error) {
 	}
 }
 func TestWeakFetch(t *testing.T) {
-	dc, _ := NewClient(rdb, NewDefaultOptions())
+	dc := NewClient(rdb, NewDefaultOptions())
 
 	clearCache()
 	began := time.Now()
@@ -49,7 +47,7 @@ func TestWeakFetch(t *testing.T) {
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	err = dc.Delete(rdbKey)
+	err = dc.DelayDelete(rdbKey)
 	assert.Nil(t, err)
 
 	nv := "value2"
@@ -65,7 +63,7 @@ func TestWeakFetch(t *testing.T) {
 
 func TestStrongFetch(t *testing.T) {
 	clearCache()
-	dc, _ := NewClient(rdb, NewDefaultOptions())
+	dc := NewClient(rdb, NewDefaultOptions())
 	dc.Options.StrongConsistency = true
 	began := time.Now()
 	expected := "value1"
@@ -81,7 +79,7 @@ func TestStrongFetch(t *testing.T) {
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	err = dc.Delete(rdbKey)
+	err = dc.DelayDelete(rdbKey)
 	assert.Nil(t, err)
 
 	began = time.Now()

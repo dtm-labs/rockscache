@@ -1,7 +1,6 @@
 package rockscache
 
 import (
-	"errors"
 	"math/rand"
 	"time"
 
@@ -25,10 +24,10 @@ type Options struct {
 	RandomExpireAdjustment float32
 	// CacheReadDisabled is the flag to disable read cache. default is false
 	// when redis is down, set this flat to downgrade.
-	CacheReadDisabled bool
+	DisableCacheRead bool
 	// CacheDeleteDisabled is the flag to disable delete cache. default is false
 	// when redis is down, set this flat to downgrade.
-	CacheDeleteDisabled bool
+	DisableCacheDelete bool
 	// StrongConsistency is the flag to enable strong consistency. default is false
 	// if enabled, the Fetch result will be consistent with the db result, but performance is bad.
 	StrongConsistency bool
@@ -47,16 +46,16 @@ type Client struct {
 }
 
 // NewClient new a delay client
-func NewClient(rdb *redis.Client, options Options) (*Client, error) {
+func NewClient(rdb *redis.Client, options Options) *Client {
 	if options.Delay == 0 || options.LockExpire == 0 {
-		return nil, errors.New("cache options error: delay and lock expire should not be 0")
+		panic("cache options error: Delay and LockExpire should not be 0, you should call NewDefaultOptions() to get default options")
 	}
-	return &Client{rdb: rdb, Options: options}, nil
+	return &Client{rdb: rdb, Options: options}
 }
 
-// Delete tag a key deleted, then the key will expire after delay time.
-func (c *Client) Delete(key string) error {
-	if c.Options.CacheDeleteDisabled {
+// DelayDelete a key, the key will expire after delay time.
+func (c *Client) DelayDelete(key string) error {
+	if c.Options.DisableCacheDelete {
 		return nil
 	}
 	debugf("delete: key=%s", key)
@@ -77,7 +76,7 @@ redis.call('EXPIRE', KEYS[1], ARGV[2])
 func (c *Client) Fetch(key string, expire int, fn func() (string, error)) (string, error) {
 	ex := expire - c.Options.Delay - int(rand.Float32()*c.Options.RandomExpireAdjustment*float32(expire))
 	v, err, _ := c.group.Do(key, func() (interface{}, error) {
-		if c.Options.CacheReadDisabled {
+		if c.Options.DisableCacheRead {
 			return fn()
 		} else if c.Options.StrongConsistency {
 			return c.strongFetch(key, ex, fn)
@@ -122,7 +121,7 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 	}
 	getNew := func() (string, error) {
 		result, err := fn()
-		if err != nil {
+		if err != nil || result == "" && c.Options.EmptyExpire == 0 {
 			return "", err
 		}
 		if result == "" {
@@ -184,7 +183,7 @@ func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) 
 	}
 
 	result, err := fn()
-	if err != nil {
+	if err != nil || result == "" && c.Options.EmptyExpire == 0 {
 		return "", err
 	}
 	if result == "" {
