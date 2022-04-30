@@ -3,6 +3,7 @@ package rockscache
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -52,4 +53,17 @@ func TestErrorFetch(t *testing.T) {
 	rc.Options.StrongConsistency = true
 	_, err = rc.Fetch("key2", 60, fn)
 	assert.Equal(t, fmt.Errorf("error"), err)
+}
+
+func TestPanicFetch(t *testing.T) {
+	fn := func() (string, error) { return "abc", nil }
+	pfn := func() (string, error) { panic(fmt.Errorf("error")) }
+	clearCache()
+	rc := NewClient(rdb, NewDefaultOptions())
+	_, err := rc.Fetch("key1", 60, fn)
+	assert.Nil(t, err)
+	rc.DelayDelete("key1")
+	_, err = rc.Fetch("key1", 60, pfn)
+	assert.Nil(t, err)
+	time.Sleep(20 * time.Millisecond)
 }

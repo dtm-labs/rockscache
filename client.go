@@ -2,9 +2,8 @@ package rockscache
 
 import (
 	"math/rand"
+	"runtime/debug"
 	"time"
-
-	"log"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/lithammer/shortuuid"
@@ -152,9 +151,9 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 	}
 	go func() {
 		defer func() {
-			x := recover()
-			if x != nil {
-				log.Printf("panic in weakFetch-getNew %v", x)
+			if x := recover(); x != nil {
+				debugf("panic in getNew: %v", x)
+				debug.PrintStack()
 			}
 		}()
 		_, _ = getNew()
