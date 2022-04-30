@@ -2,6 +2,7 @@ package rockscache
 
 import (
 	"log"
+	"runtime/debug"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -30,4 +31,13 @@ func callLua(rdb *redis.Client, script string, keys []string, args []interface{}
 		err = nil
 	}
 	return v, err
+}
+
+func withRecover(f func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			debug.PrintStack()
+		}
+	}()
+	f()
 }
