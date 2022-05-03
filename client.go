@@ -13,19 +13,19 @@ const locked = "LOCKED"
 
 // Options represents the options for rockscache client
 type Options struct {
-	// Delay is the delay delete time for keys that are tag deleted. unit seconds. default is 10s
-	Delay int
-	// EmptyExpire is the expire time for empty result. unit seconds. default is 60s
-	EmptyExpire int
-	// LockExpire is the expire time for the lock which is allocated when updating cache. unit seconds. default is 3s
+	// Delay is the delay delete time for keys that are tag deleted. default is 10s
+	Delay time.Duration
+	// EmptyExpire is the expire time for empty result. default is 60s
+	EmptyExpire time.Duration
+	// LockExpire is the expire time for the lock which is allocated when updating cache. default is 3s
 	// should be set to the max of the underling data calculating time.
-	LockExpire int
-	// LockSleepMilli is the sleep interval time if try lock failed. unit milli seconds. default is 1000ms
-	LockSleepMilli int
+	LockExpire time.Duration
+	// LockSleep is the sleep interval time if try lock failed. default is 1000ms
+	LockSleep time.Duration
 	// RandomExpireAdjustment is the random adjustment for the expire time. default 0.1
 	// if the expire time is set to 600s, and this value is set to 0.1, then the actual expire time will be 540s - 600s
 	// solve the problem of cache avalanche.
-	RandomExpireAdjustment float32
+	RandomExpireAdjustment float64
 	// CacheReadDisabled is the flag to disable read cache. default is false
 	// when redis is down, set this flat to downgrade.
 	DisableCacheRead bool
@@ -43,7 +43,7 @@ func NewDefaultOptions() Options {
 		Delay:                  10,
 		EmptyExpire:            60,
 		LockExpire:             3,
-		LockSleepMilli:         1000,
+		LockSleep:              1000,
 		RandomExpireAdjustment: 0.1,
 	}
 }
@@ -89,8 +89,8 @@ redis.call('EXPIRE', KEYS[1], ARGV[1])
 
 // Fetch returns the value store in cache indexed by the key.
 // If the key doest not exists, call fn to get result, store it in cache, then return.
-func (c *Client) Fetch(key string, expire int, fn func() (string, error)) (string, error) {
-	ex := expire - c.Options.Delay - int(rand.Float32()*c.Options.RandomExpireAdjustment*float32(expire))
+func (c *Client) Fetch(key string, expire time.Duration, fn func() (string, error)) (string, error) {
+	ex := expire - c.Options.Delay - time.Duration(rand.Float64()*c.Options.RandomExpireAdjustment*float64(expire))
 	v, err, _ := c.group.Do(key, func() (interface{}, error) {
 		if c.Options.DisableCacheRead {
 			return fn()
@@ -134,7 +134,7 @@ func (c *Client) luaSet(key string, value string, expire int, owner string) erro
 	return err
 }
 
-func (c *Client) fetchNew(key string, expire int, owner string, fn func() (string, error)) (string, error) {
+func (c *Client) fetchNew(key string, expire time.Duration, owner string, fn func() (string, error)) (string, error) {
 	result, err := fn()
 	if err != nil {
 		return "", err
@@ -146,17 +146,17 @@ func (c *Client) fetchNew(key string, expire int, owner string, fn func() (strin
 		}
 		expire = c.Options.EmptyExpire
 	}
-	err = c.luaSet(key, result, expire, owner)
+	err = c.luaSet(key, result, int(expire/time.Second), owner)
 	return result, err
 }
 
-func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (string, error) {
+func (c *Client) weakFetch(key string, expire time.Duration, fn func() (string, error)) (string, error) {
 	debugf("weakFetch: key=%s", key)
 	owner := shortuuid.New()
 	r, err := c.luaGet(key, owner)
 	for err == nil && r[0] == nil && r[1].(string) != locked {
-		debugf("empty result for %s locked by other, so sleep %d ms", key, c.Options.LockSleepMilli)
-		time.Sleep(time.Duration(c.Options.LockSleepMilli) * time.Millisecond)
+		debugf("empty result for %s locked by other, so sleep %d ms", key, c.Options.LockSleep)
+		time.Sleep(time.Duration(c.Options.LockSleep) * time.Millisecond)
 		r, err = c.luaGet(key, owner)
 	}
 	if err != nil {
@@ -174,13 +174,13 @@ func (c *Client) weakFetch(key string, expire int, fn func() (string, error)) (s
 	return r[0].(string), nil
 }
 
-func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) (string, error) {
+func (c *Client) strongFetch(key string, expire time.Duration, fn func() (string, error)) (string, error) {
 	debugf("strongFetch: key=%s", key)
 	owner := shortuuid.New()
 	r, err := c.luaGet(key, owner)
 	for err == nil && r[1] != nil && r[1] != locked { // locked by other
-		debugf("locked by other, so sleep %d ms", c.Options.LockSleepMilli)
-		time.Sleep(time.Duration(c.Options.LockSleepMilli) * time.Millisecond)
+		debugf("locked by other, so sleep %d ms", c.Options.LockSleep)
+		time.Sleep(time.Duration(c.Options.LockSleep) * time.Millisecond)
 		r, err = c.luaGet(key, owner)
 	}
 	if err != nil {
@@ -190,4 +190,16 @@ func (c *Client) strongFetch(key string, expire int, fn func() (string, error)) 
 		return r[0].(string), nil
 	}
 	return c.fetchNew(key, expire, owner, fn)
+}
+
+func (c *Client) RawGet(key string) (string, error) {
+	return c.rdb.HGet(c.rdb.Context(), key, "value").Result()
+}
+
+func (c *Client) RawSet(key string, value string, expire time.Duration) error {
+	err := c.rdb.HSet(c.rdb.Context(), key, "value", value).Err()
+	if err == nil {
+		err = c.rdb.Expire(c.rdb.Context(), key, expire).Err()
+	}
+	return err
 }

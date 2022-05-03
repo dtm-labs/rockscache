@@ -41,13 +41,13 @@ func TestWeakFetch(t *testing.T) {
 	expected := "value1"
 	go func() {
 		dc2 := NewClient(rdb, NewDefaultOptions())
-		v, err := dc2.Fetch(rdbKey, 60, genDataFunc(expected, 200))
+		v, err := dc2.Fetch(rdbKey, 60*time.Second, genDataFunc(expected, 200))
 		assert.Nil(t, err)
 		assert.Equal(t, expected, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := rc.Fetch(rdbKey, 60, genDataFunc(expected, 201))
+	v, err := rc.Fetch(rdbKey, 60*time.Second, genDataFunc(expected, 201))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
@@ -56,12 +56,12 @@ func TestWeakFetch(t *testing.T) {
 	assert.Nil(t, err)
 
 	nv := "value2"
-	v, err = rc.Fetch(rdbKey, 60, genDataFunc(nv, 200))
+	v, err = rc.Fetch(rdbKey, 60*time.Second, genDataFunc(nv, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 
 	time.Sleep(300 * time.Millisecond)
-	v, err = rc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
+	v, err = rc.Fetch(rdbKey, 60*time.Second, genDataFunc("ignored", 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 }
@@ -74,13 +74,13 @@ func TestStrongFetch(t *testing.T) {
 	expected := "value1"
 	go func() {
 		dc2 := NewClient(rdb, NewDefaultOptions())
-		v, err := dc2.Fetch(rdbKey, 60, genDataFunc(expected, 200))
+		v, err := dc2.Fetch(rdbKey, 60*time.Second, genDataFunc(expected, 200))
 		assert.Nil(t, err)
 		assert.Equal(t, expected, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := rc.Fetch(rdbKey, 60, genDataFunc(expected, 200))
+	v, err := rc.Fetch(rdbKey, 60*time.Second, genDataFunc(expected, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
@@ -90,13 +90,25 @@ func TestStrongFetch(t *testing.T) {
 
 	began = time.Now()
 	nv := "value2"
-	v, err = rc.Fetch(rdbKey, 60, genDataFunc(nv, 200))
+	v, err = rc.Fetch(rdbKey, 60*time.Second, genDataFunc(nv, 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	v, err = rc.Fetch(rdbKey, 60, genDataFunc("ignored", 200))
+	v, err = rc.Fetch(rdbKey, 60*time.Second, genDataFunc("ignored", 200))
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 
+}
+
+func TestRawGet(t *testing.T) {
+	rc := NewClient(rdb, NewDefaultOptions())
+	_, err := rc.RawGet("not-exists")
+	assert.Error(t, redis.Nil, err)
+}
+
+func TestRawSet(t *testing.T) {
+	rc := NewClient(rdb, NewDefaultOptions())
+	err := rc.RawSet("eeeee", "value", 60*time.Second)
+	assert.Nil(t, err)
 }

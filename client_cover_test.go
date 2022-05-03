@@ -27,10 +27,10 @@ func TestDisable(t *testing.T) {
 
 func TestEmptyExpire(t *testing.T) {
 	testEmptyExpire(t, 0)
-	testEmptyExpire(t, 10)
+	testEmptyExpire(t, 10*time.Second)
 }
 
-func testEmptyExpire(t *testing.T, expire int) {
+func testEmptyExpire(t *testing.T, expire time.Duration) {
 	clearCache()
 	rc := NewClient(rdb, NewDefaultOptions())
 	rc.Options.EmptyExpire = expire
@@ -60,10 +60,10 @@ func TestPanicFetch(t *testing.T) {
 	pfn := func() (string, error) { panic(fmt.Errorf("error")) }
 	clearCache()
 	rc := NewClient(rdb, NewDefaultOptions())
-	_, err := rc.Fetch("key1", 60, fn)
+	_, err := rc.Fetch("key1", 60*time.Second, fn)
 	assert.Nil(t, err)
 	rc.DelayDelete("key1")
-	_, err = rc.Fetch("key1", 60, pfn)
+	_, err = rc.Fetch("key1", 60*time.Second, pfn)
 	assert.Nil(t, err)
 	time.Sleep(20 * time.Millisecond)
 }
