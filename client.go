@@ -208,7 +208,7 @@ func (c *Client) RawSet(key string, value string, expire time.Duration) error {
 	return err
 }
 
-// LockUpdate locks the key, used in very strict strong consistency mode
+// LockForUpdate locks the key, used in very strict strong consistency mode
 func (c *Client) LockForUpdate(key string, owner string) error {
 	lockUtil := math.Pow10(10)
 	res, err := callLua(c.rdb, ` -- luaLock
