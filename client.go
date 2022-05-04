@@ -1,6 +1,8 @@
 package rockscache
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
 	"time"
 
@@ -192,14 +194,46 @@ func (c *Client) strongFetch(key string, expire time.Duration, fn func() (string
 	return c.fetchNew(key, expire, owner, fn)
 }
 
+// RawGet returns the value store in cache indexed by the key, no matter if the key locked or not
 func (c *Client) RawGet(key string) (string, error) {
 	return c.rdb.HGet(c.rdb.Context(), key, "value").Result()
 }
 
+// RawSet sets the value store in cache indexed by the key, no matter if the key locked or not
 func (c *Client) RawSet(key string, value string, expire time.Duration) error {
 	err := c.rdb.HSet(c.rdb.Context(), key, "value", value).Err()
 	if err == nil {
 		err = c.rdb.Expire(c.rdb.Context(), key, expire).Err()
 	}
+	return err
+}
+
+// LockUpdate locks the key, used in very strict strong consistency mode
+func (c *Client) LockForUpdate(key string, owner string) error {
+	lockUtil := math.Pow10(10)
+	res, err := callLua(c.rdb, ` -- luaLock
+	local lu = redis.call('HGET', KEYS[1], 'lockUtil')
+	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
+	if lu == false or tonumber(lu) < tonumber(ARGV[2]) or lo == ARGV[1] then
+		redis.call('HSET', KEYS[1], 'lockUtil', ARGV[2])
+		redis.call('HSET', KEYS[1], 'lockOwner', ARGV[1])
+		return 'LOCKED'
+	end
+	return lo
+	`, []string{key}, []interface{}{owner, lockUtil})
+	if err == nil && res != "LOCKED" {
+		return fmt.Errorf("%s has been locked by %s", key, res)
+	}
+	return err
+}
+
+// UnlockForUpdate unlocks the key, used in very strict strong consistency mode
+func (c *Client) UnlockForUpdate(key string, owner string) error {
+	_, err := callLua(c.rdb, ` -- luaUnlock
+	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
+	if lo == ARGV[1] then
+		redis.call('DEL', KEYS[1])
+	end
+	`, []string{key}, []interface{}{owner})
 	return err
 }

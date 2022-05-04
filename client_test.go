@@ -112,3 +112,16 @@ func TestRawSet(t *testing.T) {
 	err := rc.RawSet("eeeee", "value", 60*time.Second)
 	assert.Nil(t, err)
 }
+
+func TestLock(t *testing.T) {
+	rc := NewClient(rdb, NewDefaultOptions())
+	rc.Options.StrongConsistency = true
+	owner := "test_owner"
+	key := "test_lock"
+	err := rc.LockForUpdate(key, owner)
+	assert.Nil(t, err)
+	err = rc.LockForUpdate(key, "other_owner")
+	assert.Error(t, err)
+	err = rc.UnlockForUpdate(key, owner)
+	assert.Nil(t, err)
+}

@@ -30,6 +30,7 @@ func callLua(rdb *redis.Client, script string, keys []string, args []interface{}
 	if err == redis.Nil {
 		err = nil
 	}
+	debugf("callLua result: v=%v, err=%v", v, err)
 	return v, err
 }
 
