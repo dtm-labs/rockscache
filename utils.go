@@ -1,6 +1,7 @@
 package rockscache
 
 import (
+	"context"
 	"log"
 	"runtime/debug"
 	"time"
@@ -24,9 +25,13 @@ func now() int64 {
 	return time.Now().Unix()
 }
 
-func callLua(rdb *redis.Client, script string, keys []string, args []interface{}) (interface{}, error) {
+type redisConn interface {
+	Eval(ctx context.Context, script string, keys []string, args ...interface{}) *redis.Cmd
+}
+
+func callLua(rdb redisConn, ctx context.Context, script string, keys []string, args []interface{}) (interface{}, error) {
 	debugf("callLua: script=%s, keys=%v, args=%v", script, keys, args)
-	v, err := rdb.Eval(rdb.Context(), script, keys, args).Result()
+	v, err := rdb.Eval(ctx, script, keys, args).Result()
 	if err == redis.Nil {
 		err = nil
 	}

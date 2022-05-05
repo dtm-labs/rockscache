@@ -67,3 +67,12 @@ func TestPanicFetch(t *testing.T) {
 	assert.Nil(t, err)
 	time.Sleep(20 * time.Millisecond)
 }
+
+func TestDelayDeleteWait(t *testing.T) {
+	clearCache()
+	rc := NewClient(rdb, NewDefaultOptions())
+	rc.Options.WaitReplicas = 1
+	rc.Options.WaitReplicasTimeout = 10
+	err := rc.DelayDelete("key1")
+	assert.Error(t, err, fmt.Errorf("wait replicas 1 failed. result replicas: 0"))
+}
