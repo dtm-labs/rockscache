@@ -85,7 +85,7 @@ func (c *Client) DelayDelete(key string) error {
 	}
 	debugf("deleting: key=%s", key)
 	luaFn := func(con redisConn) error {
-		_, err := callLua(con, c.rdb.Context(), ` --  delete
+		_, err := callLua(c.rdb.Context(), con, ` --  delete
 		local v = redis.call('HGET', KEYS[1], 'value')
 		if v == false then
 			return
@@ -98,7 +98,9 @@ func (c *Client) DelayDelete(key string) error {
 	}
 	if c.Options.WaitReplicas > 0 {
 		rconn := c.rdb.Conn(c.rdb.Context())
-		defer rconn.Close()
+		defer func() {
+			_ = rconn.Close()
+		}()
 		err := luaFn(rconn)
 		cmd := redis.NewCmd(c.rdb.Context(), "WAIT", c.Options.WaitReplicas, c.Options.WaitReplicasTimeout)
 		if err == nil && c.Options.WaitReplicas > 0 {
@@ -132,7 +134,7 @@ func (c *Client) Fetch(key string, expire time.Duration, fn func() (string, erro
 }
 
 func (c *Client) luaGet(key string, owner string) ([]interface{}, error) {
-	res, err := callLua(c.rdb, c.rdb.Context(), ` -- luaGet
+	res, err := callLua(c.rdb.Context(), c.rdb, ` -- luaGet
 	local v = redis.call('HGET', KEYS[1], 'value')
 	local lu = redis.call('HGET', KEYS[1], 'lockUtil')
 	if lu ~= false and tonumber(lu) < tonumber(ARGV[1]) or lu == false and v == false then
@@ -150,7 +152,7 @@ func (c *Client) luaGet(key string, owner string) ([]interface{}, error) {
 }
 
 func (c *Client) luaSet(key string, value string, expire int, owner string) error {
-	_, err := callLua(c.rdb, c.rdb.Context(), `-- luaSet
+	_, err := callLua(c.rdb.Context(), c.rdb, `-- luaSet
 	local o = redis.call('HGET', KEYS[1], 'lockOwner')
 	if o ~= ARGV[2] then
 			return
@@ -238,7 +240,7 @@ func (c *Client) RawSet(key string, value string, expire time.Duration) error {
 // LockForUpdate locks the key, used in very strict strong consistency mode
 func (c *Client) LockForUpdate(key string, owner string) error {
 	lockUtil := math.Pow10(10)
-	res, err := callLua(c.rdb, c.rdb.Context(), ` -- luaLock
+	res, err := callLua(c.rdb.Context(), c.rdb, ` -- luaLock
 	local lu = redis.call('HGET', KEYS[1], 'lockUtil')
 	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
 	if lu == false or tonumber(lu) < tonumber(ARGV[2]) or lo == ARGV[1] then
@@ -256,7 +258,7 @@ func (c *Client) LockForUpdate(key string, owner string) error {
 
 // UnlockForUpdate unlocks the key, used in very strict strong consistency mode
 func (c *Client) UnlockForUpdate(key string, owner string) error {
-	_, err := callLua(c.rdb, c.rdb.Context(), ` -- luaUnlock
+	_, err := callLua(c.rdb.Context(), c.rdb, ` -- luaUnlock
 	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
 	if lo == ARGV[1] then
 		redis.call('DEL', KEYS[1])
