@@ -115,4 +115,6 @@ dtm官方公众号：分布式事务，大量干货分享，以及dtm的最新�
 
 ![yedf2008](http://service.ivydad.com/cover/dubbingb6b5e2c0-2d2a-cd59-f7c5-c6b90aceb6f1.jpeg)
 
-欢迎使用[rockscache](https://github.com/dtm-labs/rockscache)，欢迎star支持我们
+欢迎使用[dtm-labs/rockscache](https://github.com/dtm-labs/rockscache)，欢迎star支持我们
+
+也欢迎使用，欢迎 star [dtm-labs/dtm](https://github.com/dtm-labs/dtm)，它是更通用的一站式的一致性问题解决方案，
