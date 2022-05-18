@@ -74,8 +74,9 @@ rc.Options.StrongConsisteny = true
 详细原理参考[缓存一致性](https://dtm.pub/app/cache.html)，例子参考[dtm-cases/cache](https://github.com/dtm-labs/dtm-cases/tree/main/cache)
 
 ## 防缓存击穿
-通过本库使用缓存，自带防缓存击穿功能。一方面`Fetch`会在进程内部使用`singleflight`，避免一个进程内有多个请求发到Redis，另一方面在Redis层会使用分布式锁，避免多个进程的多个请求同时发到DB。
+通过本库使用缓存，自带防缓存击穿功能。一方面`Fetch`会在进程内部使用`singleflight`，避免一个进程内有多个请求发到Redis，另一方面在Redis层会使用分布式锁，避免多个进程的多个请求同时发到DB，保证最终只有一个数据查询请求到DB。
 
+本项目的的防缓存击穿，在热点缓存数据删除时，能够提供更快的响应时间。假如某个热点缓存数据需要花费3s计算，普通的防缓存击穿方案会导致这个时间内的所有这个热点数据的请求都等待3s，而本项目的方案，则能够立即返回。
 ## 防缓存穿透
 通过本库使用缓存，自带防缓存穿透功能。当`Fetch`中的`fn`返回空字符串时，认为这是空结果，会将过期时间设定为rockscache选项中的`EmptyExpire`.
 
@@ -88,7 +89,9 @@ rc.Options.StrongConsisteny = true
 ### 公众号
 dtm-labs官方公众号：《分布式事务》，大量分布式事务干货分享，以及dtm-labs的最新消息
 ### 交流群
-请加 yedf2008 好友或者扫码加好友，验证回复 dtm 按照指引进群
+如果您希望更快的获得反馈，或者更多的了解其他用户在使用过程中的各种反馈，欢迎加入我们的微信交流群
+
+请加作者的微信 yedf2008 好友或者扫码加好友，备注 `rockscache` 按照指引进群
 
 ![yedf2008](http://service.ivydad.com/cover/dubbingb6b5e2c0-2d2a-cd59-f7c5-c6b90aceb6f1.jpeg)
 
