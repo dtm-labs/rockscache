@@ -25,7 +25,7 @@ type Options struct {
 	// LockSleep is the sleep interval time if try lock failed. default is 100ms
 	LockSleep time.Duration
 	// WaitReplicas is the number of replicas to wait for. default is 0
-	// if WaitReplicas is > 0, it will use redis WAIT command to wait for TagDeleted synchronized.
+	// if WaitReplicas is > 0, it will use redis WAIT command to wait for TagAsDeleted synchronized.
 	WaitReplicas int
 	// WaitReplicasTimeout is the number of replicas to wait for. default is 3000ms
 	// if WaitReplicas is > 0, WaitReplicasTimeout is the timeout for WAIT command.
@@ -78,8 +78,8 @@ func NewClient(rdb *redis.Client, options Options) *Client {
 	return &Client{rdb: rdb, Options: options}
 }
 
-// TagDeleted a key, the key will expire after delay time.
-func (c *Client) TagDeleted(key string) error {
+// TagAsDeleted a key, the key will expire after delay time.
+func (c *Client) TagAsDeleted(key string) error {
 	if c.Options.DisableCacheDelete {
 		return nil
 	}

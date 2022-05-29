@@ -21,7 +21,7 @@ func TestDisable(t *testing.T) {
 	fn := func() (string, error) { return "", nil }
 	_, err := rc.Fetch("key", 60, fn)
 	assert.Nil(t, err)
-	err = rc.TagDeleted("key")
+	err = rc.TagAsDeleted("key")
 	assert.Nil(t, err)
 }
 
@@ -62,17 +62,17 @@ func TestPanicFetch(t *testing.T) {
 	rc := NewClient(rdb, NewDefaultOptions())
 	_, err := rc.Fetch("key1", 60*time.Second, fn)
 	assert.Nil(t, err)
-	rc.TagDeleted("key1")
+	rc.TagAsDeleted("key1")
 	_, err = rc.Fetch("key1", 60*time.Second, pfn)
 	assert.Nil(t, err)
 	time.Sleep(20 * time.Millisecond)
 }
 
-func TestTagDeletedWait(t *testing.T) {
+func TestTagAsDeletedWait(t *testing.T) {
 	clearCache()
 	rc := NewClient(rdb, NewDefaultOptions())
 	rc.Options.WaitReplicas = 1
 	rc.Options.WaitReplicasTimeout = 10
-	err := rc.TagDeleted("key1")
+	err := rc.TagAsDeleted("key1")
 	assert.Error(t, err, fmt.Errorf("wait replicas 1 failed. result replicas: 0"))
 }

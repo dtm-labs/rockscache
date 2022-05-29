@@ -38,7 +38,7 @@ v, err := rc.Fetch("key1", 300, func()(string, error) {
 
 ### Delete the cache
 ``` Go
-rc.TagDeleted(key)
+rc.TagAsDeleted(key)
 ```
 
 ## Eventual consistency
@@ -56,8 +56,8 @@ Even if you use lock to do the updating, there are still corner cases that can c
 ### Solution
 This project brings you a brand new solution that guarantee data consistency between the cache and the database, without introducing version. This solution is the first of its kind and has been patented and is now open sourced for everyone to use.
 
-When the developer calls `Fetch` when reading the data, and makes sure to call `TagDeleted` after updating the database, then the cache can guarentee the eventual consistency. When step 5 in the diagram above is writing to v1, the write in this solution will eventually be ignored.
-- See [Atomicity of DB and cache operations](https://en.dtm.pub/app/cache.html#atomic) for how to ensure that TagDeleted is called after updating the database.
+When the developer calls `Fetch` when reading the data, and makes sure to call `TagAsDeleted` after updating the database, then the cache can guarentee the eventual consistency. When step 5 in the diagram above is writing to v1, the write in this solution will eventually be ignored.
+- See [Atomicity of DB and cache operations](https://en.dtm.pub/app/cache.html#atomic) for how to ensure that TagAsDeleted is called after updating the database.
 - See [Cache consistency](https://en.dtm.pub/app/cache.html) for why data writes are ignored when step 5 is writing v1 to cache.
 
 For a full runnable example, see [dtm-cases/cache](https://github.com/dtm-labs/dtm-cases/tree/main/cache)
@@ -73,7 +73,7 @@ Refer to [cache consistency](https://en.dtm.pub/app/cache.html) for detailed pri
 ## Downgrading and strong consistency
 The library supports downgrading. The downgrade switch is divided into
 - `DisableCacheRead`: turns off cache reads, default `false`; if on, then Fetch does not read from the cache, but calls fn directly to fetch the data
-- `DisableCacheDelete`: disables cache delete, default false; if on, then TagDeleted does nothing and returns directly
+- `DisableCacheDelete`: disables cache delete, default false; if on, then TagAsDeleted does nothing and returns directly
 
 When Redis has a problem and needs to be downgraded, you can control this with these two switches. If you need to maintain strong consistent access even during a downgrade, rockscache also supports
 

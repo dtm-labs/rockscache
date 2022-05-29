@@ -35,7 +35,7 @@ v, err := rc.Fetch("key1", 300, func()(string, error) {
 
 ### 删除缓存
 ``` Go
-rc.TagDeleted(key)
+rc.TagAsDeleted(key)
 ```
 
 ## 最终一致
@@ -50,8 +50,8 @@ rc.TagDeleted(key)
 ### 解决方案
 本项目给大家带来了一个全新方案，能够确保缓存与数据库的数据一致性，解决这个大难题。此方案是首创，已申请专利，现开源出来，供大家使用。
 
-当开发者读数据时调用`Fetch`，并且确保更新数据库之后调用`TagDeleted`，那么就能够确保缓存最终一致。当遇见上图中步骤5写入v1时，最终会放弃写入。
-- 如何确保更新数据库之后会调用TagDeleted，参见[DB与缓存操作的原子性](https://dtm.pub/app/cache.html#atomic)
+当开发者读数据时调用`Fetch`，并且确保更新数据库之后调用`TagAsDeleted`，那么就能够确保缓存最终一致。当遇见上图中步骤5写入v1时，最终会放弃写入。
+- 如何确保更新数据库之后会调用TagAsDeleted，参见[DB与缓存操作的原子性](https://dtm.pub/app/cache.html#atomic)
 - 步骤5写入v1时，数据写入会被放弃的原理，参见[缓存一致性](https://dtm.pub/app/cache.html)
 
 完整的可运行的例子，参考[dtm-cases/cache](https://github.com/dtm-labs/dtm-cases/tree/main/cache)
@@ -67,7 +67,7 @@ rc.Options.StrongConsisteny = true
 ## 降级以及强一致
 本库支持降级，降级开关分为
 - `DisableCacheRead`: 关闭缓存读，默认`false`；如果打开，那么Fetch就不从缓存读取数据，而是直接调用fn获取数据
-- `DisableCacheDelete`: 关闭缓存删除，默认false；如果打开，那么TagDeleted就什么操作都不做，直接返回
+- `DisableCacheDelete`: 关闭缓存删除，默认false；如果打开，那么TagAsDeleted就什么操作都不做，直接返回
 
 当Redis出现问题，需要降级时，可以通过这两个开关控制。如果您需要在降级升级的过程中，也保持强一致的访问，rockscache也是支持的
 
