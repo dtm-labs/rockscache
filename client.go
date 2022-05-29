@@ -22,10 +22,10 @@ type Options struct {
 	// LockExpire is the expire time for the lock which is allocated when updating cache. default is 3s
 	// should be set to the max of the underling data calculating time.
 	LockExpire time.Duration
-	// LockSleep is the sleep interval time if try lock failed. default is 1000ms
+	// LockSleep is the sleep interval time if try lock failed. default is 100ms
 	LockSleep time.Duration
 	// WaitReplicas is the number of replicas to wait for. default is 0
-	// if WaitReplicas is > 0, it will use redis WAIT command to wait for DelayDelete synchronized.
+	// if WaitReplicas is > 0, it will use redis WAIT command to wait for TagDeleted synchronized.
 	WaitReplicas int
 	// WaitReplicasTimeout is the number of replicas to wait for. default is 3000ms
 	// if WaitReplicas is > 0, WaitReplicasTimeout is the timeout for WAIT command.
@@ -51,7 +51,7 @@ func NewDefaultOptions() Options {
 		Delay:                  10 * time.Second,
 		EmptyExpire:            60 * time.Second,
 		LockExpire:             3 * time.Second,
-		LockSleep:              1000 * time.Millisecond,
+		LockSleep:              100 * time.Millisecond,
 		RandomExpireAdjustment: 0.1,
 		WaitReplicasTimeout:    3000 * time.Millisecond,
 	}
@@ -78,8 +78,8 @@ func NewClient(rdb *redis.Client, options Options) *Client {
 	return &Client{rdb: rdb, Options: options}
 }
 
-// DelayDelete a key, the key will expire after delay time.
-func (c *Client) DelayDelete(key string) error {
+// TagDeleted a key, the key will expire after delay time.
+func (c *Client) TagDeleted(key string) error {
 	if c.Options.DisableCacheDelete {
 		return nil
 	}

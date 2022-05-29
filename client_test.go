@@ -52,7 +52,7 @@ func TestWeakFetch(t *testing.T) {
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	err = rc.DelayDelete(rdbKey)
+	err = rc.TagDeleted(rdbKey)
 	assert.Nil(t, err)
 
 	nv := "value2"
@@ -85,7 +85,7 @@ func TestStrongFetch(t *testing.T) {
 	assert.Equal(t, expected, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	err = rc.DelayDelete(rdbKey)
+	err = rc.TagDeleted(rdbKey)
 	assert.Nil(t, err)
 
 	began = time.Now()
