@@ -47,7 +47,7 @@ With the introduction of caching, consistency problems in a distributed system s
 
 But all the caching solutions we've seen so far, without introducing versioning at the application level, fail to address the following data inconsistency scenario.
 
-<img alt="cache-version-problem" src="https://martin.kleppmann.com/2016/02/unsafe-lock.png" height=400 />
+<img alt="cache-version-problem" src="https://en.dtm.pub/assets/cache-version.39d3aace.svg" height=400 />
 
 Even if you use lock to do the updating, there are still corner cases that can cause inconsistency.
 
