@@ -86,14 +86,10 @@ func (c *Client) TagAsDeleted(key string) error {
 	debugf("deleting: key=%s", key)
 	luaFn := func(con redisConn) error {
 		_, err := callLua(c.rdb.Context(), con, ` --  delete
-		local v = redis.call('HGET', KEYS[1], 'value')
-		if v == false then
-			return
-		end
 		redis.call('HSET', KEYS[1], 'lockUtil', 0)
 		redis.call('HDEL', KEYS[1], 'lockOwner')
 		redis.call('EXPIRE', KEYS[1], ARGV[1])
-			`, []string{key}, []interface{}{c.Options.Delay})
+			`, []string{key}, []interface{}{int64(c.Options.Delay / time.Second)})
 		return err
 	}
 	if c.Options.WaitReplicas > 0 {
@@ -143,7 +139,7 @@ func (c *Client) luaGet(key string, owner string) ([]interface{}, error) {
 		return { v, 'LOCKED' }
 	end
 	return {v, lu}
-	`, []string{key}, []interface{}{now(), now() + int64(c.Options.LockExpire), owner})
+	`, []string{key}, []interface{}{now(), now() + int64(c.Options.LockExpire/time.Second), owner})
 	debugf("luaGet return: %v, %v", res, err)
 	if err != nil {
 		return nil, err
@@ -186,7 +182,7 @@ func (c *Client) weakFetch(key string, expire time.Duration, fn func() (string, 
 	owner := shortuuid.New()
 	r, err := c.luaGet(key, owner)
 	for err == nil && r[0] == nil && r[1].(string) != locked {
-		debugf("empty result for %s locked by other, so sleep %d ms", key, c.Options.LockSleep)
+		debugf("empty result for %s locked by other, so sleep %s", key, c.Options.LockSleep.String())
 		time.Sleep(c.Options.LockSleep)
 		r, err = c.luaGet(key, owner)
 	}
