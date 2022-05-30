@@ -7,7 +7,7 @@
 English | [简体中文](https://github.com/dtm-labs/rockscache/blob/main/helper/README-cn.md)
 
 # RocksCache
-The first Redis cache libary to guarantee eventual consistency and strong consistency with DB.
+The first Redis cache library to ensure eventual consistency and strong consistency with DB.
 
 ## Features
 - Eventual Consistency: ensures eventual consistency of cache even in extreme cases
