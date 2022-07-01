@@ -206,7 +206,7 @@ func (c *Client) strongFetch(key string, expire time.Duration, fn func() (string
 	owner := shortuuid.New()
 	r, err := c.luaGet(key, owner)
 	for err == nil && r[1] != nil && r[1] != locked { // locked by other
-		debugf("locked by other, so sleep %d ms", c.Options.LockSleep)
+		debugf("locked by other, so sleep %s", c.Options.LockSleep)
 		time.Sleep(c.Options.LockSleep)
 		r, err = c.luaGet(key, owner)
 	}
