@@ -164,7 +164,7 @@ func (c *Client) luaSet(key string, value string, expire int, owner string) erro
 func (c *Client) fetchNew(key string, expire time.Duration, owner string, fn func() (string, error)) (string, error) {
 	result, err := fn()
 	if err != nil {
-		c.UnlockForUpdate(key, owner)
+		_ = c.UnlockForUpdate(key, owner)
 		return "", err
 	}
 	if result == "" {
