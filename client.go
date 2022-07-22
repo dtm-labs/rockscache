@@ -164,6 +164,7 @@ func (c *Client) luaSet(key string, value string, expire int, owner string) erro
 func (c *Client) fetchNew(key string, expire time.Duration, owner string, fn func() (string, error)) (string, error) {
 	result, err := fn()
 	if err != nil {
+		c.UnlockForUpdate(key, owner)
 		return "", err
 	}
 	if result == "" {
@@ -257,7 +258,8 @@ func (c *Client) UnlockForUpdate(key string, owner string) error {
 	_, err := callLua(c.rdb.Context(), c.rdb, ` -- luaUnlock
 	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
 	if lo == ARGV[1] then
-		redis.call('DEL', KEYS[1])
+		redis.call('HSET', KEYS[1], 'lockUtil', 0)
+		redis.call('HDEL', KEYS[1], 'lockOwner')
 	end
 	`, []string{key}, []interface{}{owner})
 	return err

@@ -1,6 +1,7 @@
 package rockscache
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -99,6 +100,24 @@ func TestStrongFetch(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, nv, v)
 
+}
+
+func TestWeakErrorFetch(t *testing.T) {
+	rc := NewClient(rdb, NewDefaultOptions())
+
+	clearCache()
+	began := time.Now()
+
+	fetchError := errors.New("fetch error")
+	getFn := func() (string, error) {
+		return "", fetchError
+	}
+	_, err := rc.Fetch(rdbKey, 60*time.Second, getFn)
+	assert.Error(t, err)
+	fetchError = nil
+	_, err = rc.Fetch(rdbKey, 60*time.Second, getFn)
+	assert.Nil(t, err)
+	assert.True(t, time.Since(began) < time.Duration(150)*time.Millisecond)
 }
 
 func TestRawGet(t *testing.T) {
