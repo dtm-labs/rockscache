@@ -1,6 +1,7 @@
 package rockscache
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -17,8 +18,32 @@ var rdb = redis.NewClient(&redis.Options{
 	Password: "",
 })
 
+// var rdb = redis.NewClusterClient(&redis.ClusterOptions{
+// 	Addrs:    []string{"43.128.5.63:46381", "43.128.5.63:46382", "43.128.5.63:46380", "43.128.5.63:46383", "43.128.5.63:46384", "43.128.5.63:46385"},
+// 	Username: "",
+// 	Password: "",
+// })
+
+type iRedisCluster interface {
+	ForEachMaster(context.Context, func(context.Context, *redis.Client) error) error
+}
+
+func getCluster() iRedisCluster {
+	var rr interface{} = rdb
+	v, _ := rr.(iRedisCluster)
+	return v
+}
+
 func clearCache() {
-	err := rdb.FlushAll(rdb.Context()).Err()
+	var err error
+	if clu := getCluster(); clu != nil {
+		err = clu.ForEachMaster(rdb.Context(), func(ctx context.Context, master *redis.Client) error {
+			return master.FlushAll(ctx).Err()
+		})
+	} else {
+		err = rdb.FlushDB(rdb.Context()).Err()
+	}
+
 	if err != nil {
 		panic(err)
 	}
