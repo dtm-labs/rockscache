@@ -59,7 +59,7 @@ func NewDefaultOptions() Options {
 
 // Client delay client
 type Client struct {
-	rdb     *redis.Client
+	rdb     redis.UniversalClient
 	Options Options
 	group   singleflight.Group
 }
@@ -71,7 +71,7 @@ type Client struct {
 // lockUtil: the time when the lock is released.
 // lockOwner: the owner of the lock.
 // if a thread query the cache for data, and no cache exists, it will lock the key before querying data in DB
-func NewClient(rdb *redis.Client, options Options) *Client {
+func NewClient(rdb redis.UniversalClient, options Options) *Client {
 	if options.Delay == 0 || options.LockExpire == 0 {
 		panic("cache options error: Delay and LockExpire should not be 0, you should call NewDefaultOptions() to get default options")
 	}
@@ -93,14 +93,10 @@ func (c *Client) TagAsDeleted(key string) error {
 		return err
 	}
 	if c.Options.WaitReplicas > 0 {
-		rconn := c.rdb.Conn(c.rdb.Context())
-		defer func() {
-			_ = rconn.Close()
-		}()
-		err := luaFn(rconn)
+		err := luaFn(c.rdb)
 		cmd := redis.NewCmd(c.rdb.Context(), "WAIT", c.Options.WaitReplicas, c.Options.WaitReplicasTimeout)
-		if err == nil && c.Options.WaitReplicas > 0 {
-			err = rconn.Process(c.rdb.Context(), cmd)
+		if err == nil {
+			err = c.rdb.Process(c.rdb.Context(), cmd)
 		}
 		var replicas int
 		if err == nil {
