@@ -1,6 +1,7 @@
 package rockscache
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -19,9 +20,9 @@ func TestDisable(t *testing.T) {
 	rc.Options.DisableCacheDelete = true
 	rc.Options.DisableCacheRead = true
 	fn := func() (string, error) { return "", nil }
-	_, err := rc.Fetch("key", 60, fn)
+	_, err := rc.Fetch2(context.Background(), "key", 60, fn)
 	assert.Nil(t, err)
-	err = rc.TagAsDeleted("key")
+	err = rc.TagAsDeleted2(context.Background(), "key")
 	assert.Nil(t, err)
 }
 

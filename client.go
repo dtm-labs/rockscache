@@ -1,6 +1,7 @@
 package rockscache
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"math/rand"
@@ -80,12 +81,17 @@ func NewClient(rdb redis.UniversalClient, options Options) *Client {
 
 // TagAsDeleted a key, the key will expire after delay time.
 func (c *Client) TagAsDeleted(key string) error {
+	return c.TagAsDeleted2(c.rdb.Context(), key)
+}
+
+// TagAsDeleted2 a key, the key will expire after delay time.
+func (c *Client) TagAsDeleted2(ctx context.Context, key string) error {
 	if c.Options.DisableCacheDelete {
 		return nil
 	}
 	debugf("deleting: key=%s", key)
 	luaFn := func(con redisConn) error {
-		_, err := callLua(c.rdb.Context(), con, ` --  delete
+		_, err := callLua(ctx, con, ` --  delete
 		redis.call('HSET', KEYS[1], 'lockUtil', 0)
 		redis.call('HDEL', KEYS[1], 'lockOwner')
 		redis.call('EXPIRE', KEYS[1], ARGV[1])
@@ -94,9 +100,9 @@ func (c *Client) TagAsDeleted(key string) error {
 	}
 	if c.Options.WaitReplicas > 0 {
 		err := luaFn(c.rdb)
-		cmd := redis.NewCmd(c.rdb.Context(), "WAIT", c.Options.WaitReplicas, c.Options.WaitReplicasTimeout)
+		cmd := redis.NewCmd(ctx, "WAIT", c.Options.WaitReplicas, c.Options.WaitReplicasTimeout)
 		if err == nil {
-			err = c.rdb.Process(c.rdb.Context(), cmd)
+			err = c.rdb.Process(ctx, cmd)
 		}
 		var replicas int
 		if err == nil {
@@ -113,20 +119,26 @@ func (c *Client) TagAsDeleted(key string) error {
 // Fetch returns the value store in cache indexed by the key.
 // If the key doest not exists, call fn to get result, store it in cache, then return.
 func (c *Client) Fetch(key string, expire time.Duration, fn func() (string, error)) (string, error) {
+	return c.Fetch2(c.rdb.Context(), key, expire, fn)
+}
+
+// Fetch returns the value store in cache indexed by the key.
+// If the key doest not exists, call fn to get result, store it in cache, then return.
+func (c *Client) Fetch2(ctx context.Context, key string, expire time.Duration, fn func() (string, error)) (string, error) {
 	ex := expire - c.Options.Delay - time.Duration(rand.Float64()*c.Options.RandomExpireAdjustment*float64(expire))
 	v, err, _ := c.group.Do(key, func() (interface{}, error) {
 		if c.Options.DisableCacheRead {
 			return fn()
 		} else if c.Options.StrongConsistency {
-			return c.strongFetch(key, ex, fn)
+			return c.strongFetch(ctx, key, ex, fn)
 		}
-		return c.weakFetch(key, ex, fn)
+		return c.weakFetch(ctx, key, ex, fn)
 	})
 	return v.(string), err
 }
 
-func (c *Client) luaGet(key string, owner string) ([]interface{}, error) {
-	res, err := callLua(c.rdb.Context(), c.rdb, ` -- luaGet
+func (c *Client) luaGet(ctx context.Context, key string, owner string) ([]interface{}, error) {
+	res, err := callLua(ctx, c.rdb, ` -- luaGet
 	local v = redis.call('HGET', KEYS[1], 'value')
 	local lu = redis.call('HGET', KEYS[1], 'lockUtil')
 	if lu ~= false and tonumber(lu) < tonumber(ARGV[1]) or lu == false and v == false then
@@ -143,8 +155,8 @@ func (c *Client) luaGet(key string, owner string) ([]interface{}, error) {
 	return res.([]interface{}), nil
 }
 
-func (c *Client) luaSet(key string, value string, expire int, owner string) error {
-	_, err := callLua(c.rdb.Context(), c.rdb, `-- luaSet
+func (c *Client) luaSet(ctx context.Context, key string, value string, expire int, owner string) error {
+	_, err := callLua(ctx, c.rdb, `-- luaSet
 	local o = redis.call('HGET', KEYS[1], 'lockOwner')
 	if o ~= ARGV[2] then
 			return
@@ -157,31 +169,31 @@ func (c *Client) luaSet(key string, value string, expire int, owner string) erro
 	return err
 }
 
-func (c *Client) fetchNew(key string, expire time.Duration, owner string, fn func() (string, error)) (string, error) {
+func (c *Client) fetchNew(ctx context.Context, key string, expire time.Duration, owner string, fn func() (string, error)) (string, error) {
 	result, err := fn()
 	if err != nil {
-		_ = c.UnlockForUpdate(key, owner)
+		_ = c.UnlockForUpdate(ctx, key, owner)
 		return "", err
 	}
 	if result == "" {
 		if c.Options.EmptyExpire == 0 { // if empty expire is 0, then delete the key
-			err = c.rdb.Del(c.rdb.Context(), key).Err()
+			err = c.rdb.Del(ctx, key).Err()
 			return "", err
 		}
 		expire = c.Options.EmptyExpire
 	}
-	err = c.luaSet(key, result, int(expire/time.Second), owner)
+	err = c.luaSet(ctx, key, result, int(expire/time.Second), owner)
 	return result, err
 }
 
-func (c *Client) weakFetch(key string, expire time.Duration, fn func() (string, error)) (string, error) {
+func (c *Client) weakFetch(ctx context.Context, key string, expire time.Duration, fn func() (string, error)) (string, error) {
 	debugf("weakFetch: key=%s", key)
 	owner := shortuuid.New()
-	r, err := c.luaGet(key, owner)
+	r, err := c.luaGet(ctx, key, owner)
 	for err == nil && r[0] == nil && r[1].(string) != locked {
 		debugf("empty result for %s locked by other, so sleep %s", key, c.Options.LockSleep.String())
 		time.Sleep(c.Options.LockSleep)
-		r, err = c.luaGet(key, owner)
+		r, err = c.luaGet(ctx, key, owner)
 	}
 	if err != nil {
 		return "", err
@@ -190,22 +202,22 @@ func (c *Client) weakFetch(key string, expire time.Duration, fn func() (string, 
 		return r[0].(string), nil
 	}
 	if r[0] == nil {
-		return c.fetchNew(key, expire, owner, fn)
+		return c.fetchNew(ctx, key, expire, owner, fn)
 	}
 	go withRecover(func() {
-		_, _ = c.fetchNew(key, expire, owner, fn)
+		_, _ = c.fetchNew(ctx, key, expire, owner, fn)
 	})
 	return r[0].(string), nil
 }
 
-func (c *Client) strongFetch(key string, expire time.Duration, fn func() (string, error)) (string, error) {
+func (c *Client) strongFetch(ctx context.Context, key string, expire time.Duration, fn func() (string, error)) (string, error) {
 	debugf("strongFetch: key=%s", key)
 	owner := shortuuid.New()
-	r, err := c.luaGet(key, owner)
+	r, err := c.luaGet(ctx, key, owner)
 	for err == nil && r[1] != nil && r[1] != locked { // locked by other
 		debugf("locked by other, so sleep %s", c.Options.LockSleep)
 		time.Sleep(c.Options.LockSleep)
-		r, err = c.luaGet(key, owner)
+		r, err = c.luaGet(ctx, key, owner)
 	}
 	if err != nil {
 		return "", err
@@ -213,27 +225,27 @@ func (c *Client) strongFetch(key string, expire time.Duration, fn func() (string
 	if r[1] != locked { // normal value
 		return r[0].(string), nil
 	}
-	return c.fetchNew(key, expire, owner, fn)
+	return c.fetchNew(ctx, key, expire, owner, fn)
 }
 
 // RawGet returns the value store in cache indexed by the key, no matter if the key locked or not
-func (c *Client) RawGet(key string) (string, error) {
-	return c.rdb.HGet(c.rdb.Context(), key, "value").Result()
+func (c *Client) RawGet(ctx context.Context, key string) (string, error) {
+	return c.rdb.HGet(ctx, key, "value").Result()
 }
 
 // RawSet sets the value store in cache indexed by the key, no matter if the key locked or not
-func (c *Client) RawSet(key string, value string, expire time.Duration) error {
-	err := c.rdb.HSet(c.rdb.Context(), key, "value", value).Err()
+func (c *Client) RawSet(ctx context.Context, key string, value string, expire time.Duration) error {
+	err := c.rdb.HSet(ctx, key, "value", value).Err()
 	if err == nil {
-		err = c.rdb.Expire(c.rdb.Context(), key, expire).Err()
+		err = c.rdb.Expire(ctx, key, expire).Err()
 	}
 	return err
 }
 
 // LockForUpdate locks the key, used in very strict strong consistency mode
-func (c *Client) LockForUpdate(key string, owner string) error {
+func (c *Client) LockForUpdate(ctx context.Context, key string, owner string) error {
 	lockUtil := math.Pow10(10)
-	res, err := callLua(c.rdb.Context(), c.rdb, ` -- luaLock
+	res, err := callLua(ctx, c.rdb, ` -- luaLock
 	local lu = redis.call('HGET', KEYS[1], 'lockUtil')
 	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
 	if lu == false or tonumber(lu) < tonumber(ARGV[2]) or lo == ARGV[1] then
@@ -250,8 +262,8 @@ func (c *Client) LockForUpdate(key string, owner string) error {
 }
 
 // UnlockForUpdate unlocks the key, used in very strict strong consistency mode
-func (c *Client) UnlockForUpdate(key string, owner string) error {
-	_, err := callLua(c.rdb.Context(), c.rdb, ` -- luaUnlock
+func (c *Client) UnlockForUpdate(ctx context.Context, key string, owner string) error {
+	_, err := callLua(ctx, c.rdb, ` -- luaUnlock
 	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
 	if lo == ARGV[1] then
 		redis.call('HSET', KEYS[1], 'lockUtil', 0)

@@ -147,13 +147,13 @@ func TestWeakErrorFetch(t *testing.T) {
 
 func TestRawGet(t *testing.T) {
 	rc := NewClient(rdb, NewDefaultOptions())
-	_, err := rc.RawGet("not-exists")
+	_, err := rc.RawGet(rdb.Context(), "not-exists")
 	assert.Error(t, redis.Nil, err)
 }
 
 func TestRawSet(t *testing.T) {
 	rc := NewClient(rdb, NewDefaultOptions())
-	err := rc.RawSet("eeeee", "value", 60*time.Second)
+	err := rc.RawSet(rdb.Context(), "eeeee", "value", 60*time.Second)
 	assert.Nil(t, err)
 }
 
@@ -162,10 +162,10 @@ func TestLock(t *testing.T) {
 	rc.Options.StrongConsistency = true
 	owner := "test_owner"
 	key := "test_lock"
-	err := rc.LockForUpdate(key, owner)
+	err := rc.LockForUpdate(rdb.Context(), key, owner)
 	assert.Nil(t, err)
-	err = rc.LockForUpdate(key, "other_owner")
+	err = rc.LockForUpdate(rdb.Context(), key, "other_owner")
 	assert.Error(t, err)
-	err = rc.UnlockForUpdate(key, owner)
+	err = rc.UnlockForUpdate(rdb.Context(), key, owner)
 	assert.Nil(t, err)
 }
