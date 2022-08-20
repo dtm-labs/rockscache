@@ -122,7 +122,7 @@ func (c *Client) Fetch(key string, expire time.Duration, fn func() (string, erro
 	return c.Fetch2(c.rdb.Context(), key, expire, fn)
 }
 
-// Fetch returns the value store in cache indexed by the key.
+// Fetch2 returns the value store in cache indexed by the key.
 // If the key doest not exists, call fn to get result, store it in cache, then return.
 func (c *Client) Fetch2(ctx context.Context, key string, expire time.Duration, fn func() (string, error)) (string, error) {
 	ex := expire - c.Options.Delay - time.Duration(rand.Float64()*c.Options.RandomExpireAdjustment*float64(expire))
