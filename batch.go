@@ -156,8 +156,8 @@ func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire tim
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range fetched {
-			result[k] = v
+		for _, k := range toFetch {
+			result[k] = fetched[k]
 		}
 	}
 
