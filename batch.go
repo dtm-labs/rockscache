@@ -32,7 +32,7 @@ func (c *Client) luaGetBatch(ctx context.Context, keys []string, owner string) (
     end
     return rets
 	`, keys, []interface{}{now(), now() + int64(c.Options.LockExpire/time.Second), owner})
-	debugf("luaGet return: %v, %v", res, err)
+	debugf("luaGetBatch return: %v, %v", res, err)
 	if err != nil {
 		return nil, err
 	}
@@ -156,8 +156,8 @@ func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire tim
 		if err != nil {
 			return nil, err
 		}
-		for k, v := range fetched {
-			result[k] = v
+		for _, k := range toFetch {
+			result[k] = fetched[k]
 		}
 		toFetch = toFetch[:0] // reset toFetch
 	}
