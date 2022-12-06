@@ -15,6 +15,56 @@ var (
 	errNeedFetch = errors.New("need fetch")
 )
 
+func (c *Client) luaGetBatch(ctx context.Context, keys []string, owner string) ([]interface{}, error) {
+	res, err := callLua(ctx, c.rdb, ` -- luaGetBatch
+    local rets = {}
+    for i, key in ipairs(KEYS)
+    do
+        local v = redis.call('HGET', key, 'value')
+        local lu = redis.call('HGET', key, 'lockUtil')
+        if lu ~= false and tonumber(lu) < tonumber(ARGV[1]) or lu == false and v == false then
+            redis.call('HSET', key, 'lockUtil', ARGV[2])
+            redis.call('HSET', key, 'lockOwner', ARGV[3])
+            table.insert(rets, { v, 'LOCKED' })
+        else
+            table.insert(rets, {v, lu})
+        end
+    end
+    return rets
+	`, keys, []interface{}{now(), now() + int64(c.Options.LockExpire/time.Second), owner})
+	debugf("luaGet return: %v, %v", res, err)
+	if err != nil {
+		return nil, err
+	}
+	return res.([]interface{}), nil
+}
+
+func (c *Client) luaSetBatch(ctx context.Context, keys []string, values []string, expires []int, owner string) error {
+	var vals = make([]interface{}, 0, 2+len(values))
+	vals = append(vals, owner)
+	for _, v := range values {
+		vals = append(vals, v)
+	}
+	for _, ex := range expires {
+		vals = append(vals, ex)
+	}
+	_, err := callLua(ctx, c.rdb, `-- luaSetBatch
+    local n = #KEYS
+    for i, key in ipairs(KEYS)
+    do
+        local o = redis.call('HGET', key, 'lockOwner')
+        if o ~= ARGV[1] then
+                return
+        end
+        redis.call('HSET', key, 'value', ARGV[i+1])
+        redis.call('HDEL', key, 'lockUtil')
+        redis.call('HDEL', key, 'lockOwner')
+        redis.call('EXPIRE', key, ARGV[i+1+n])
+    end
+	`, keys, vals)
+	return err
+}
+
 func (c *Client) fetchBatch(ctx context.Context, keys []string, idxs []int, expire time.Duration, owner string, fn func(idxs []int) (map[int]string, error)) (map[int]string, error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -34,6 +84,10 @@ func (c *Client) fetchBatch(ctx context.Context, keys []string, idxs []int, expi
 		data = make(map[int]string)
 	}
 
+	var batchKeys []string
+	var batchValues []string
+	var batchExpires []int
+
 	for _, idx := range idxs {
 		v := data[idx]
 		ex := expire - c.Options.Delay - time.Duration(rand.Float64()*c.Options.RandomExpireAdjustment*float64(expire))
@@ -49,10 +103,14 @@ func (c *Client) fetchBatch(ctx context.Context, keys []string, idxs []int, expi
 
 			data[idx] = v // incase idx not in data
 		}
-		err = c.luaSet(ctx, keys[idx], v, int(ex/time.Second), owner)
-		if err != nil {
-			debugf("batch: luaSet failed key=%s err:%s", keys[idx], err.Error())
-		}
+		batchKeys = append(batchKeys, keys[idx])
+		batchValues = append(batchValues, v)
+		batchExpires = append(batchExpires, int(ex/time.Second))
+	}
+
+	err = c.luaSetBatch(ctx, batchKeys, batchValues, batchExpires, owner)
+	if err != nil {
+		debugf("batch: luaSetBatch failed keys=%s err:%s", keys, err.Error())
 	}
 	return data, nil
 }
@@ -68,29 +126,28 @@ func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire tim
 	debugf("batch: strongFetch keys=%+v", keys)
 	var result = make(map[int]string)
 	owner := shortuuid.New()
-	var idxs = c.keysIdx(keys)
 	var toGet, toFetch []int
 
 	// read from redis without sleep
-	for _, idx := range idxs {
-		r, err := c.luaGet(ctx, keys[idx], owner)
-		if err != nil {
-			return nil, err
-		}
-
+	rs, err := c.luaGetBatch(ctx, keys, owner)
+	if err != nil {
+		return nil, err
+	}
+	for i, v := range rs {
+		r := v.([]interface{})
 		if r[1] == nil { // normal value
-			result[idx] = r[0].(string)
+			result[i] = r[0].(string)
 			continue
 		}
 
 		if r[1] != locked { // locked by other
-			debugf("batch: locked by other, continue idx=%d", idx)
-			toGet = append(toGet, idx)
+			debugf("batch: locked by other, continue idx=%d", i)
+			toGet = append(toGet, i)
 			continue
 		}
 
 		// locked for fetch
-		toFetch = append(toFetch, idx)
+		toFetch = append(toFetch, i)
 	}
 
 	if len(toFetch) > 0 {
