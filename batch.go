@@ -3,11 +3,13 @@ package rockscache
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"runtime/debug"
 	"sync"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/lithammer/shortuuid"
 )
 
@@ -16,14 +18,14 @@ var (
 )
 
 func (c *Client) luaGetBatch(ctx context.Context, keys []string, owner string) ([]interface{}, error) {
-	res, err := callLua(ctx, c.rdb, ` -- luaGetBatch
+	res, err := callLua(ctx, c.rdb, `-- luaGetBatch
     local rets = {}
     for i, key in ipairs(KEYS)
     do
         local v = redis.call('HGET', key, 'value')
-        local lu = redis.call('HGET', key, 'lockUtil')
+        local lu = redis.call('HGET', key, 'lockUntil')
         if lu ~= false and tonumber(lu) < tonumber(ARGV[1]) or lu == false and v == false then
-            redis.call('HSET', key, 'lockUtil', ARGV[2])
+            redis.call('HSET', key, 'lockUntil', ARGV[2])
             redis.call('HSET', key, 'lockOwner', ARGV[3])
             table.insert(rets, { v, 'LOCKED' })
         else
@@ -57,7 +59,7 @@ func (c *Client) luaSetBatch(ctx context.Context, keys []string, values []string
                 return
         end
         redis.call('HSET', key, 'value', ARGV[i+1])
-        redis.call('HDEL', key, 'lockUtil')
+        redis.call('HDEL', key, 'lockUntil')
         redis.call('HDEL', key, 'lockOwner')
         redis.call('EXPIRE', key, ARGV[i+1+n])
     end
@@ -231,4 +233,42 @@ func (c *Client) FetchBatch2(ctx context.Context, keys []string, expire time.Dur
 	}
 	// there's no weak fetch batch
 	return c.strongFetchBatch(ctx, keys, expire, fn)
+}
+
+func (c *Client) TagAsDeletedBatch(keys []string) error {
+	return c.TagAsDeletedBatch2(c.rdb.Context(), keys)
+}
+
+// TagAsDeleted2 a key, the key will expire after delay time.
+func (c *Client) TagAsDeletedBatch2(ctx context.Context, keys []string) error {
+	if c.Options.DisableCacheDelete {
+		return nil
+	}
+	debugf("batch deleting: keys=%v", keys)
+	luaFn := func(con redisConn) error {
+		_, err := callLua(ctx, con, ` -- luaDeleteBatch
+		for i, key in ipairs(KEYS) do
+			redis.call('HSET', key, 'lockUntil', 0)
+			redis.call('HDEL', key, 'lockOwner')
+			redis.call('EXPIRE', key, ARGV[1])
+		end
+		`, keys, []interface{}{int64(c.Options.Delay / time.Second)})
+		return err
+	}
+	if c.Options.WaitReplicas > 0 {
+		err := luaFn(c.rdb)
+		cmd := redis.NewCmd(ctx, "WAIT", c.Options.WaitReplicas, c.Options.WaitReplicasTimeout)
+		if err == nil {
+			err = c.rdb.Process(ctx, cmd)
+		}
+		var replicas int
+		if err == nil {
+			replicas, err = cmd.Int()
+		}
+		if err == nil && replicas < c.Options.WaitReplicas {
+			err = fmt.Errorf("wait replicas %d failed. result replicas: %d", c.Options.WaitReplicas, replicas)
+		}
+		return err
+	}
+	return luaFn(c.rdb)
 }

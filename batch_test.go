@@ -2,6 +2,7 @@ package rockscache
 
 import (
 	"errors"
+	"fmt"
 	"math/rand"
 	"strconv"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 func genBatchDataFunc(values map[int]string, sleepMilli int) func(idxs []int) (map[int]string, error) {
 	return func(idxs []int) (map[int]string, error) {
+		debugf("batch fetching: %v", idxs)
 		time.Sleep(time.Duration(sleepMilli) * time.Millisecond)
 		return values, nil
 	}
@@ -49,36 +51,33 @@ func TestStrongFetchBatch(t *testing.T) {
 	began := time.Now()
 	n := int(rand.Int31n(20) + 10)
 	idxs := genIdxs(0, n)
-	keys, values := genKeys(idxs), genValues(n, "value_")
+	keys, values1, values2 := genKeys(idxs), genValues(n, "value_"), genValues(n, "eulav_")
+	values3, values4 := genValues(n, "vvvv_"), genValues(n, "uuuu_")
 	go func() {
 		dc2 := NewClient(rdb, NewDefaultOptions())
-		v, err := dc2.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values, 200))
+		v, err := dc2.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values1, 200))
 		assert.Nil(t, err)
-		assert.Equal(t, values, v)
+		assert.Equal(t, values1, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
-	v, err := rc.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values, 200))
+	v, err := rc.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values2, 200))
 	assert.Nil(t, err)
-	assert.Equal(t, values, v)
+	assert.Equal(t, values1, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	for _, k := range keys {
-		err = rc.TagAsDeleted(k)
-		assert.Nil(t, err)
-	}
+	err = rc.TagAsDeletedBatch(keys)
+	assert.Nil(t, err)
 
 	began = time.Now()
-	nv := genValues(n, "value_")
-	v, err = rc.FetchBatch(keys, 60*time.Second, genBatchDataFunc(nv, 200))
+	v, err = rc.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values3, 200))
 	assert.Nil(t, err)
-	assert.Equal(t, nv, v)
+	assert.Equal(t, values3, v)
 	assert.True(t, time.Since(began) > time.Duration(150)*time.Millisecond)
 
-	ignored := genValues(n, "value_")
-	v, err = rc.FetchBatch(keys, 60*time.Second, genBatchDataFunc(ignored, 200))
+	v, err = rc.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values4, 200))
 	assert.Nil(t, err)
-	assert.Equal(t, nv, v)
+	assert.Equal(t, values3, v)
 }
 
 func TestStrongFetchBatchOverlap(t *testing.T) {
@@ -169,4 +168,17 @@ func TestStrongErrorFetchBatch(t *testing.T) {
 	_, err = rc.FetchBatch(keys, 60*time.Second, getFn)
 	assert.Nil(t, err)
 	assert.True(t, time.Since(began) < time.Duration(150)*time.Millisecond)
+}
+
+func TestTagAsDeletedBatchWait(t *testing.T) {
+	clearCache()
+	rc := NewClient(rdb, NewDefaultOptions())
+	rc.Options.WaitReplicas = 1
+	rc.Options.WaitReplicasTimeout = 10
+	err := rc.TagAsDeletedBatch([]string{"key1", "key2"})
+	if getCluster() != nil {
+		assert.Nil(t, err)
+	} else {
+		assert.Error(t, err, fmt.Errorf("wait replicas 1 failed. result replicas: 0"))
+	}
 }
