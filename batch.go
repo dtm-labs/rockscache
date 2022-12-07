@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	errNeedFetch = errors.New("need fetch")
+	errNeedFetch      = errors.New("need fetch")
+	errNeedAsyncFetch = errors.New("need async fetch")
 )
 
 func (c *Client) luaGetBatch(ctx context.Context, keys []string, owner string) ([]interface{}, error) {
@@ -124,6 +125,134 @@ func (c *Client) keysIdx(keys []string) (idxs []int) {
 	return idxs
 }
 
+type pair struct {
+	idx  int
+	data string
+	err  error
+}
+
+func (c *Client) weakFetchBatch(ctx context.Context, keys []string, expire time.Duration, fn func(idxs []int) (map[int]string, error)) (map[int]string, error) {
+	debugf("batch: weakFetch keys=%+v", keys)
+	var result = make(map[int]string)
+	owner := shortuuid.New()
+	var toGet, toFetch, toFetchAsync []int
+
+	// read from redis without sleep
+	rs, err := c.luaGetBatch(ctx, keys, owner)
+	if err != nil {
+		return nil, err
+	}
+	for i, v := range rs {
+		r := v.([]interface{})
+
+		if r[0] == nil {
+			if r[1] == locked {
+				toFetch = append(toFetch, i)
+			} else {
+				toGet = append(toGet, i)
+			}
+			continue
+		}
+
+		if r[1] == locked {
+			toFetchAsync = append(toFetchAsync, i)
+			// fallthrough with old data
+		} // else new data
+
+		result[i] = r[0].(string)
+	}
+
+	if len(toFetchAsync) > 0 {
+		go func(idxs []int) {
+			debugf("batch weak: async fetch keys=%+v", keys)
+			_, _ = c.fetchBatch(ctx, keys, idxs, expire, owner, fn)
+		}(toFetchAsync)
+		toFetchAsync = toFetchAsync[:0] // reset toFetch
+	}
+
+	if len(toFetch) > 0 {
+		// batch fetch
+		fetched, err := c.fetchBatch(ctx, keys, toFetch, expire, owner, fn)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range toFetch {
+			result[k] = fetched[k]
+		}
+		toFetch = toFetch[:0] // reset toFetch
+	}
+
+	if len(toGet) > 0 {
+		// read from redis and sleep to wait
+		var wg sync.WaitGroup
+
+		var ch = make(chan pair, len(toGet))
+		for _, idx := range toGet {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				r, err := c.luaGet(ctx, keys[i], owner)
+				for err == nil && r[0] == nil && r[1].(string) != locked {
+					debugf("batch weak: empty result for %s locked by other, so sleep %s", keys[i], c.Options.LockSleep.String())
+					time.Sleep(c.Options.LockSleep)
+					r, err = c.luaGet(ctx, keys[i], owner)
+				}
+				if err != nil {
+					ch <- pair{idx: i, data: "", err: err}
+					return
+				}
+				if r[1] != locked { // normal value
+					ch <- pair{idx: i, data: r[0].(string), err: nil}
+					return
+				}
+				if r[0] == nil {
+					ch <- pair{idx: i, data: "", err: errNeedFetch}
+					return
+				}
+				ch <- pair{idx: i, data: "", err: errNeedAsyncFetch}
+			}(idx)
+		}
+		wg.Wait()
+		close(ch)
+
+		for p := range ch {
+			if p.err != nil {
+				switch p.err {
+				case errNeedFetch:
+					toFetch = append(toFetch, p.idx)
+					continue
+				case errNeedAsyncFetch:
+					toFetchAsync = append(toFetchAsync, p.idx)
+					continue
+				default:
+				}
+				return nil, p.err
+			}
+			result[p.idx] = p.data
+		}
+	}
+
+	if len(toFetchAsync) > 0 {
+		go func(idxs []int) {
+			debugf("batch weak: async 2 fetch keys=%+v", keys)
+			_, _ = c.fetchBatch(ctx, keys, idxs, expire, owner, fn)
+		}(toFetchAsync)
+	}
+
+	if len(toFetch) > 0 {
+		// batch fetch
+		fetched, err := c.fetchBatch(ctx, keys, toFetch, expire, owner, fn)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range toFetch {
+			result[k] = fetched[k]
+		}
+	}
+
+	return result, nil
+}
+
 func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire time.Duration, fn func(idxs []int) (map[int]string, error)) (map[int]string, error) {
 	debugf("batch: strongFetch keys=%+v", keys)
 	var result = make(map[int]string)
@@ -167,11 +296,6 @@ func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire tim
 	if len(toGet) > 0 {
 		// read from redis and sleep to wait
 		var wg sync.WaitGroup
-		type pair struct {
-			idx  int
-			data string
-			err  error
-		}
 		var ch = make(chan pair, len(toGet))
 		for _, idx := range toGet {
 			wg.Add(1)
@@ -230,9 +354,10 @@ func (c *Client) FetchBatch(keys []string, expire time.Duration, fn func(idxs []
 func (c *Client) FetchBatch2(ctx context.Context, keys []string, expire time.Duration, fn func(idxs []int) (map[int]string, error)) (map[int]string, error) {
 	if c.Options.DisableCacheRead {
 		return fn(c.keysIdx(keys))
+	} else if c.Options.StrongConsistency {
+		return c.strongFetchBatch(ctx, keys, expire, fn)
 	}
-	// there's no weak fetch batch
-	return c.strongFetchBatch(ctx, keys, expire, fn)
+	return c.weakFetchBatch(ctx, keys, expire, fn)
 }
 
 func (c *Client) TagAsDeletedBatch(keys []string) error {

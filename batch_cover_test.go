@@ -3,6 +3,7 @@ package rockscache
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -110,15 +111,15 @@ func TestPanicFetchForBatch(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 }
 
-// func TestTagAsDeletedWait(t *testing.T) {
-// 	clearCache()
-// 	rc := NewClient(rdb, NewDefaultOptions())
-// 	rc.Options.WaitReplicas = 1
-// 	rc.Options.WaitReplicasTimeout = 10
-// 	err := rc.TagAsDeleted("key1")
-// 	if getCluster() != nil {
-// 		assert.Nil(t, err)
-// 	} else {
-// 		assert.Error(t, err, fmt.Errorf("wait replicas 1 failed. result replicas: 0"))
-// 	}
-// }
+func TestTagAsDeletedBatchWait(t *testing.T) {
+	clearCache()
+	rc := NewClient(rdb, NewDefaultOptions())
+	rc.Options.WaitReplicas = 1
+	rc.Options.WaitReplicasTimeout = 10
+	err := rc.TagAsDeletedBatch([]string{"key1", "key2"})
+	if getCluster() != nil {
+		assert.Nil(t, err)
+	} else {
+		assert.Error(t, err, fmt.Errorf("wait replicas 1 failed. result replicas: 0"))
+	}
+}
