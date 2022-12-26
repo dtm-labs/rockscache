@@ -17,6 +17,7 @@
 - 防穿透
 - 防雪崩
 - 非常易用：仅提供极简的两个函数，对应用无要求
+- 提供批量查询接口
 
 ## 使用
 本缓存库采用最常见的`更新DB后，删除缓存`的缓存管理策略
@@ -38,6 +39,32 @@ v, err := rc.Fetch("key1", 300, func()(string, error) {
 ### 删除缓存
 ``` Go
 rc.TagAsDeleted(key)
+```
+
+## 批量查询接口使用
+
+### 批量读取缓存
+``` Go
+import "github.com/dtm-labs/rockscache"
+
+// 使用默认选项生成rockscache的客户端
+rc := rockscache.NewClient(redisClient, NewDefaultOptions())
+
+// 使用FetchBatch获取数据，第一个参数是数据的keys列表，第二个参数为数据过期时间，第三个参数为缓存不存在时，数据获取函数
+// 数据获取函数的参数为 keys 列表的下标数组，表示 keys 中没命中缓存的 key 的下标，通过这些下标可以构造批量查询条件；返回值是以下标为 key，字符串为值的 map
+v, err := rc.FetchBatch([]string{"key1", "key2", "key3"}, 300, func(idxs []int) (map[int]string, error) {
+    // 从数据库或其他渠道获取数据
+    values := make(map[int]string)
+    for _, i := range idxs {
+        values[i] = fmt.Sprintf("value%d", i)
+    }
+    return values, nil
+})
+```
+
+### 批量删除缓存
+``` Go
+rc.TagAsDeletedBatch(keys)
 ```
 
 ## 最终一致

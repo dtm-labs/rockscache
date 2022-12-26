@@ -15,6 +15,7 @@ The first Redis cache library to ensure eventual consistency and strong consiste
 - Anti-breakdown: a better solution for cache breakdown
 - Anti-penetration
 - Anti-avalanche
+- Batch Query
 
 ## Usage
 This cache repository uses the most common `update DB and then delete cache` cache management policy
@@ -39,6 +40,38 @@ v, err := rc.Fetch("key1", 300, func()(string, error) {
 ### Delete the cache
 ``` Go
 rc.TagAsDeleted(key)
+```
+
+## Batch usage
+
+### Batch read cache
+``` Go
+import "github.com/dtm-labs/rockscache"
+
+// new a client for rockscache using the default options
+rc := rockscache.NewClient(redisClient, NewDefaultOptions())
+
+// use FetchBatch to fetch data
+// 1. the first parameter is the keys list of the data
+// 2. the second parameter is the data expiration time
+// 3. the third parameter is the batch data fetch function which is called when the cache does not exist
+// the parameter of the batch data fetch function is the index list of those keys
+// missing in cache, which can be used to form a batch query for missing data.
+// the return value of the batch data fetch function is a map, with key of the
+// index and value of the corresponding data in form of string
+v, err := rc.FetchBatch([]string{"key1", "key2", "key3"}, 300, func(idxs []int) (map[int]string, error) {
+    // fetch data from database or other sources
+    values := make(map[int]string)
+    for _, i := range idxs {
+        values[i] = fmt.Sprintf("value%d", i)
+    }
+    return values, nil
+})
+```
+
+### Batch delete cache
+``` Go
+rc.TagAsDeletedBatch(keys)
 ```
 
 ## Eventual consistency
