@@ -268,7 +268,8 @@ func (c *Client) UnlockForUpdate(ctx context.Context, key string, owner string) 
 	if lo == ARGV[1] then
 		redis.call('HSET', KEYS[1], 'lockUtil', 0)
 		redis.call('HDEL', KEYS[1], 'lockOwner')
+		redis.call('EXPIRE', KEYS[1], ARGV[2])
 	end
-	`, []string{key}, []interface{}{owner})
+	`, []string{key}, []interface{}{owner, c.Options.LockExpire / time.Second})
 	return err
 }
