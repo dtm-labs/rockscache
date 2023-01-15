@@ -30,7 +30,7 @@ rc := rockscache.NewClient(redisClient, NewDefaultOptions())
 // 1. the first parameter is the key of the data
 // 2. the second parameter is the data expiration time
 // 3. the third parameter is the data fetch function which is called when the cache does not exist
-v, err := rc.Fetch("key1", 300, func()(string, error) {
+v, err := rc.Fetch("key1", 300 * time.Second, func()(string, error) {
   // fetch data from database or other sources
   return "value1", nil
 })
