@@ -18,8 +18,8 @@ func genBatchDataFunc(values map[int]string, sleepMilli int) func(idxs []int) (m
 	}
 }
 
-func genIdxs(from, to int) (idxs []int) {
-	for i := from; i < to; i++ {
+func genIdxs(to int) (idxs []int) {
+	for i := 0; i < to; i++ {
 		idxs = append(idxs, i)
 	}
 	return
@@ -48,7 +48,7 @@ func TestWeakFetchBatch(t *testing.T) {
 	rc := NewClient(rdb, NewDefaultOptions())
 	began := time.Now()
 	n := int(rand.Int31n(20) + 10)
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys, values1, values2 := genKeys(idxs), genValues(n, "value_"), genValues(n, "eulav_")
 	values3 := genValues(n, "vvvv_")
 	go func() {
@@ -84,7 +84,7 @@ func TestWeakFetchBatchOverlap(t *testing.T) {
 	rc := NewClient(rdb, NewDefaultOptions())
 	began := time.Now()
 	n := 100
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys := genKeys(idxs)
 	keys1, values1 := keys[:60], genValues(60, "value_")
 	keys2, values2 := keys[40:], genValues(60, "eulav_")
@@ -133,7 +133,7 @@ func TestStrongFetchBatch(t *testing.T) {
 	rc.Options.StrongConsistency = true
 	began := time.Now()
 	n := int(rand.Int31n(20) + 10)
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys, values1, values2 := genKeys(idxs), genValues(n, "value_"), genValues(n, "eulav_")
 	values3, values4 := genValues(n, "vvvv_"), genValues(n, "uuuu_")
 	go func() {
@@ -169,7 +169,7 @@ func TestStrongFetchBatchOverlap(t *testing.T) {
 	rc.Options.StrongConsistency = true
 	began := time.Now()
 	n := 100
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys := genKeys(idxs)
 	keys1, values1 := keys[:60], genValues(60, "value_")
 	keys2, values2 := keys[40:], genValues(60, "eulav_")
@@ -203,7 +203,7 @@ func TestStrongFetchBatchOverlapExpire(t *testing.T) {
 	rc := NewClient(rdb, opts)
 	began := time.Now()
 	n := 100
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys := genKeys(idxs)
 	keys1, values1 := keys[:60], genValues(60, "value_")
 	keys2, values2 := keys[40:], genValues(60, "eulav_")
@@ -224,7 +224,7 @@ func TestStrongFetchBatchOverlapExpire(t *testing.T) {
 	}
 
 	time.Sleep(time.Second)
-	v, err = rc.FetchBatch(keys2, 2*time.Second, genBatchDataFunc(values2, 200))
+	v, err = rc.FetchBatch(keys2, 2*time.Second, genBatchDataFunc(values2, 100))
 	assert.Nil(t, err)
 	assert.Nil(t, err)
 	assert.Equal(t, values2, v)
@@ -238,7 +238,7 @@ func TestStrongErrorFetchBatch(t *testing.T) {
 	began := time.Now()
 
 	n := 100
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys := genKeys(idxs)
 
 	fetchError := errors.New("fetch error")

@@ -16,7 +16,7 @@ var (
 )
 
 func TestDisableForBatch(t *testing.T) {
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys := genKeys(idxs)
 	getFn := func(idxs []int) (map[int]string, error) {
 		return nil, nil
@@ -33,7 +33,7 @@ func TestDisableForBatch(t *testing.T) {
 }
 
 func TestErrorFetchForBatch(t *testing.T) {
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys := genKeys(idxs)
 	fetchError := errors.New("fetch error")
 	fn := func(idxs []int) (map[int]string, error) {
@@ -55,7 +55,7 @@ func TestEmptyExpireForBatch(t *testing.T) {
 }
 
 func testEmptyExpireForBatch(t *testing.T, expire time.Duration) {
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys := genKeys(idxs)
 	fn := func(idxs []int) (map[int]string, error) {
 		return nil, nil
@@ -91,7 +91,7 @@ func testEmptyExpireForBatch(t *testing.T, expire time.Duration) {
 }
 
 func TestPanicFetchForBatch(t *testing.T) {
-	idxs := genIdxs(0, n)
+	idxs := genIdxs(n)
 	keys := genKeys(idxs)
 	fn := func(idxs []int) (map[int]string, error) {
 		return nil, nil

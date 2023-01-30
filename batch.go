@@ -347,10 +347,19 @@ func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire tim
 	return result, nil
 }
 
+// FetchBatch returns a map with values indexed by index of keys list.
+// 1. the first parameter is the keys list of the data
+// 2. the second parameter is the data expiration time
+// 3. the third parameter is the batch data fetch function which is called when the cache does not exist
+// the parameter of the batch data fetch function is the index list of those keys
+// missing in cache, which can be used to form a batch query for missing data.
+// the return value of the batch data fetch function is a map, with key of the
+// index and value of the corresponding data in form of string
 func (c *Client) FetchBatch(keys []string, expire time.Duration, fn func(idxs []int) (map[int]string, error)) (map[int]string, error) {
 	return c.FetchBatch2(c.rdb.Context(), keys, expire, fn)
 }
 
+// FetchBatch2 is same with FetchBatch, except that a user defined context.Context can be provided.
 func (c *Client) FetchBatch2(ctx context.Context, keys []string, expire time.Duration, fn func(idxs []int) (map[int]string, error)) (map[int]string, error) {
 	if c.Options.DisableCacheRead {
 		return fn(c.keysIdx(keys))
@@ -360,11 +369,12 @@ func (c *Client) FetchBatch2(ctx context.Context, keys []string, expire time.Dur
 	return c.weakFetchBatch(ctx, keys, expire, fn)
 }
 
+// TagAsDeletedBatch a key list, the keys in list will expire after delay time.
 func (c *Client) TagAsDeletedBatch(keys []string) error {
 	return c.TagAsDeletedBatch2(c.rdb.Context(), keys)
 }
 
-// TagAsDeleted2 a key, the key will expire after delay time.
+// TagAsDeletedBatch2 a key list, the keys in list will expire after delay time.
 func (c *Client) TagAsDeletedBatch2(ctx context.Context, keys []string) error {
 	if c.Options.DisableCacheDelete {
 		return nil
