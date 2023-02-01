@@ -69,7 +69,7 @@ type Client struct {
 // for each key, rockscache client store a hash set,
 // the hash set contains the following fields:
 // value: the value of the key
-// lockUtil: the time when the lock is released.
+// lockUntil: the time when the lock is released.
 // lockOwner: the owner of the lock.
 // if a thread query the cache for data, and no cache exists, it will lock the key before querying data in DB
 func NewClient(rdb redis.UniversalClient, options Options) *Client {
@@ -92,7 +92,7 @@ func (c *Client) TagAsDeleted2(ctx context.Context, key string) error {
 	debugf("deleting: key=%s", key)
 	luaFn := func(con redisConn) error {
 		_, err := callLua(ctx, con, ` --  delete
-		redis.call('HSET', KEYS[1], 'lockUtil', 0)
+		redis.call('HSET', KEYS[1], 'lockUntil', 0)
 		redis.call('HDEL', KEYS[1], 'lockOwner')
 		redis.call('EXPIRE', KEYS[1], ARGV[1])
 			`, []string{key}, []interface{}{int64(c.Options.Delay / time.Second)})
@@ -140,9 +140,9 @@ func (c *Client) Fetch2(ctx context.Context, key string, expire time.Duration, f
 func (c *Client) luaGet(ctx context.Context, key string, owner string) ([]interface{}, error) {
 	res, err := callLua(ctx, c.rdb, ` -- luaGet
 	local v = redis.call('HGET', KEYS[1], 'value')
-	local lu = redis.call('HGET', KEYS[1], 'lockUtil')
+	local lu = redis.call('HGET', KEYS[1], 'lockUntil')
 	if lu ~= false and tonumber(lu) < tonumber(ARGV[1]) or lu == false and v == false then
-		redis.call('HSET', KEYS[1], 'lockUtil', ARGV[2])
+		redis.call('HSET', KEYS[1], 'lockUntil', ARGV[2])
 		redis.call('HSET', KEYS[1], 'lockOwner', ARGV[3])
 		return { v, 'LOCKED' }
 	end
@@ -162,7 +162,7 @@ func (c *Client) luaSet(ctx context.Context, key string, value string, expire in
 			return
 	end
 	redis.call('HSET', KEYS[1], 'value', ARGV[1])
-	redis.call('HDEL', KEYS[1], 'lockUtil')
+	redis.call('HDEL', KEYS[1], 'lockUntil')
 	redis.call('HDEL', KEYS[1], 'lockOwner')
 	redis.call('EXPIRE', KEYS[1], ARGV[3])
 	`, []string{key}, []interface{}{value, owner, expire})
@@ -244,17 +244,17 @@ func (c *Client) RawSet(ctx context.Context, key string, value string, expire ti
 
 // LockForUpdate locks the key, used in very strict strong consistency mode
 func (c *Client) LockForUpdate(ctx context.Context, key string, owner string) error {
-	lockUtil := math.Pow10(10)
+	lockUntil := math.Pow10(10)
 	res, err := callLua(ctx, c.rdb, ` -- luaLock
-	local lu = redis.call('HGET', KEYS[1], 'lockUtil')
+	local lu = redis.call('HGET', KEYS[1], 'lockUntil')
 	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
 	if lu == false or tonumber(lu) < tonumber(ARGV[2]) or lo == ARGV[1] then
-		redis.call('HSET', KEYS[1], 'lockUtil', ARGV[2])
+		redis.call('HSET', KEYS[1], 'lockUntil', ARGV[2])
 		redis.call('HSET', KEYS[1], 'lockOwner', ARGV[1])
 		return 'LOCKED'
 	end
 	return lo
-	`, []string{key}, []interface{}{owner, lockUtil})
+	`, []string{key}, []interface{}{owner, lockUntil})
 	if err == nil && res != "LOCKED" {
 		return fmt.Errorf("%s has been locked by %s", key, res)
 	}
@@ -266,7 +266,7 @@ func (c *Client) UnlockForUpdate(ctx context.Context, key string, owner string) 
 	_, err := callLua(ctx, c.rdb, ` -- luaUnlock
 	local lo = redis.call('HGET', KEYS[1], 'lockOwner')
 	if lo == ARGV[1] then
-		redis.call('HSET', KEYS[1], 'lockUtil', 0)
+		redis.call('HSET', KEYS[1], 'lockUntil', 0)
 		redis.call('HDEL', KEYS[1], 'lockOwner')
 		redis.call('EXPIRE', KEYS[1], ARGV[2])
 	end

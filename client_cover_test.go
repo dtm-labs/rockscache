@@ -2,6 +2,7 @@ package rockscache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -36,12 +37,28 @@ func testEmptyExpire(t *testing.T, expire time.Duration) {
 	rc := NewClient(rdb, NewDefaultOptions())
 	rc.Options.EmptyExpire = expire
 	fn := func() (string, error) { return "", nil }
+	fetchError := errors.New("fetch error")
+	errFn := func() (string, error) {
+		return "", fetchError
+	}
 	_, err := rc.Fetch("key1", 600, fn)
 	assert.Nil(t, err)
+	_, err = rc.Fetch("key1", 600, errFn)
+	if expire == 0 {
+		assert.ErrorIs(t, err, fetchError)
+	} else {
+		assert.Nil(t, err)
+	}
 
 	rc.Options.StrongConsistency = true
 	_, err = rc.Fetch("key2", 600, fn)
 	assert.Nil(t, err)
+	_, err = rc.Fetch("key2", 600, errFn)
+	if expire == 0 {
+		assert.ErrorIs(t, err, fetchError)
+	} else {
+		assert.Nil(t, err)
+	}
 }
 
 func TestErrorFetch(t *testing.T) {
