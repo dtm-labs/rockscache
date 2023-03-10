@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/lithammer/shortuuid"
+	"github.com/redis/go-redis/v9"
 )
 
 var (
@@ -356,7 +356,7 @@ func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire tim
 // the return value of the batch data fetch function is a map, with key of the
 // index and value of the corresponding data in form of string
 func (c *Client) FetchBatch(keys []string, expire time.Duration, fn func(idxs []int) (map[int]string, error)) (map[int]string, error) {
-	return c.FetchBatch2(c.rdb.Context(), keys, expire, fn)
+	return c.FetchBatch2(c.Options.Context, keys, expire, fn)
 }
 
 // FetchBatch2 is same with FetchBatch, except that a user defined context.Context can be provided.
@@ -371,7 +371,7 @@ func (c *Client) FetchBatch2(ctx context.Context, keys []string, expire time.Dur
 
 // TagAsDeletedBatch a key list, the keys in list will expire after delay time.
 func (c *Client) TagAsDeletedBatch(keys []string) error {
-	return c.TagAsDeletedBatch2(c.rdb.Context(), keys)
+	return c.TagAsDeletedBatch2(c.Options.Context, keys)
 }
 
 // TagAsDeletedBatch2 a key list, the keys in list will expire after delay time.
