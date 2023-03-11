@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-redis/redis/v8"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -17,6 +17,7 @@ var rdb = redis.NewClient(&redis.Options{
 	Username: "root",
 	Password: "",
 })
+var ctx = context.Background()
 
 // var rdb = redis.NewClusterClient(&redis.ClusterOptions{
 // 	Addrs:    []string{"43.128.5.63:46381", "43.128.5.63:46382", "43.128.5.63:46380", "43.128.5.63:46383", "43.128.5.63:46384", "43.128.5.63:46385"},
@@ -37,11 +38,11 @@ func getCluster() iRedisCluster {
 func clearCache() {
 	var err error
 	if clu := getCluster(); clu != nil {
-		err = clu.ForEachMaster(rdb.Context(), func(ctx context.Context, master *redis.Client) error {
+		err = clu.ForEachMaster(ctx, func(ctx context.Context, master *redis.Client) error {
 			return master.FlushAll(ctx).Err()
 		})
 	} else {
-		err = rdb.FlushDB(rdb.Context()).Err()
+		err = rdb.FlushDB(ctx).Err()
 	}
 
 	if err != nil {
@@ -166,13 +167,13 @@ func TestWeakErrorFetch(t *testing.T) {
 
 func TestRawGet(t *testing.T) {
 	rc := NewClient(rdb, NewDefaultOptions())
-	_, err := rc.RawGet(rdb.Context(), "not-exists")
+	_, err := rc.RawGet(ctx, "not-exists")
 	assert.Error(t, redis.Nil, err)
 }
 
 func TestRawSet(t *testing.T) {
 	rc := NewClient(rdb, NewDefaultOptions())
-	err := rc.RawSet(rdb.Context(), "eeeee", "value", 60*time.Second)
+	err := rc.RawSet(ctx, "eeeee", "value", 60*time.Second)
 	assert.Nil(t, err)
 }
 
@@ -181,10 +182,10 @@ func TestLock(t *testing.T) {
 	rc.Options.StrongConsistency = true
 	owner := "test_owner"
 	key := "test_lock"
-	err := rc.LockForUpdate(rdb.Context(), key, owner)
+	err := rc.LockForUpdate(ctx, key, owner)
 	assert.Nil(t, err)
-	err = rc.LockForUpdate(rdb.Context(), key, "other_owner")
+	err = rc.LockForUpdate(ctx, key, "other_owner")
 	assert.Error(t, err)
-	err = rc.UnlockForUpdate(rdb.Context(), key, owner)
+	err = rc.UnlockForUpdate(ctx, key, owner)
 	assert.Nil(t, err)
 }

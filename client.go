@@ -7,8 +7,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/lithammer/shortuuid"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -44,6 +44,8 @@ type Options struct {
 	// StrongConsistency is the flag to enable strong consistency. default is false
 	// if enabled, the Fetch result will be consistent with the db result, but performance is bad.
 	StrongConsistency bool
+	// Context for redis command
+	Context context.Context
 }
 
 // NewDefaultOptions return default options
@@ -55,6 +57,7 @@ func NewDefaultOptions() Options {
 		LockSleep:              100 * time.Millisecond,
 		RandomExpireAdjustment: 0.1,
 		WaitReplicasTimeout:    3000 * time.Millisecond,
+		Context:                context.Background(),
 	}
 }
 
@@ -81,7 +84,7 @@ func NewClient(rdb redis.UniversalClient, options Options) *Client {
 
 // TagAsDeleted a key, the key will expire after delay time.
 func (c *Client) TagAsDeleted(key string) error {
-	return c.TagAsDeleted2(c.rdb.Context(), key)
+	return c.TagAsDeleted2(c.Options.Context, key)
 }
 
 // TagAsDeleted2 a key, the key will expire after delay time.
@@ -119,7 +122,7 @@ func (c *Client) TagAsDeleted2(ctx context.Context, key string) error {
 // Fetch returns the value store in cache indexed by the key.
 // If the key doest not exists, call fn to get result, store it in cache, then return.
 func (c *Client) Fetch(key string, expire time.Duration, fn func() (string, error)) (string, error) {
-	return c.Fetch2(c.rdb.Context(), key, expire, fn)
+	return c.Fetch2(c.Options.Context, key, expire, fn)
 }
 
 // Fetch2 returns the value store in cache indexed by the key.
