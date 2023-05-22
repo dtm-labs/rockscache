@@ -1,10 +1,10 @@
 module github.com/dtm-labs/rockscache
 
-go 1.17
+go 1.18
 
 require (
 	github.com/lithammer/shortuuid v3.0.0+incompatible
-	github.com/redis/go-redis/v9 v9.0.2
+	github.com/redis/go-redis/v9 v9.0.3
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/sync v0.1.0
 )
