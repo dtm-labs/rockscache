@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"reflect"
 	"time"
 
+	"github.com/jinzhu/copier"
 	"github.com/lithammer/shortuuid"
 	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
@@ -46,6 +48,8 @@ type Options struct {
 	StrongConsistency bool
 	// Context for redis command
 	Context context.Context
+	// codec
+	Codec Codec
 }
 
 // NewDefaultOptions return default options
@@ -58,6 +62,7 @@ func NewDefaultOptions() Options {
 		RandomExpireAdjustment: 0.1,
 		WaitReplicasTimeout:    3000 * time.Millisecond,
 		Context:                context.Background(),
+		Codec:                  &codec{},
 	}
 }
 
@@ -275,4 +280,41 @@ func (c *Client) UnlockForUpdate(ctx context.Context, key string, owner string) 
 	end
 	`, []string{key}, []interface{}{owner, c.Options.LockExpire / time.Second})
 	return err
+}
+
+// FetchWithCodec fetch the value associated with the given key from the cache or, if not present, invokes the provided function to generate the value and stores it in the cache.
+func (c *Client) FetchWithCodec(ctx context.Context, key string, expire time.Duration, ptr interface{}, fn func() (interface{}, error)) error {
+	ex := expire - c.Options.Delay - time.Duration(rand.Float64()*c.Options.RandomExpireAdjustment*float64(expire))
+	res, err, _ := c.group.Do(key, func() (interface{}, error) {
+		f := func() (string, error) {
+			val, err := fn()
+			if err != nil {
+				return "", err
+			}
+			bs, err := c.Options.Codec.Encode(val)
+			return string(bs), err
+		}
+
+		if c.Options.DisableCacheRead {
+			return fn()
+		} else if c.Options.StrongConsistency {
+			return c.strongFetch(ctx, key, ex, f)
+		}
+		return c.weakFetch(ctx, key, ex, f)
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if reflect.TypeOf(res) == reflect.TypeOf(ptr) {
+		return copier.CopyWithOption(ptr, res, copier.Option{DeepCopy: true})
+	}
+
+	switch val := res.(type) {
+	case string:
+		return c.Options.Codec.Decode([]byte(val), ptr)
+	default:
+		return fmt.Errorf("invalid type returned from cache fetch: %T", val)
+	}
 }

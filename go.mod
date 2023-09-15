@@ -3,6 +3,7 @@ module github.com/dtm-labs/rockscache
 go 1.18
 
 require (
+	github.com/jinzhu/copier v0.4.0
 	github.com/lithammer/shortuuid v3.0.0+incompatible
 	github.com/redis/go-redis/v9 v9.0.3
 	github.com/stretchr/testify v1.8.1
