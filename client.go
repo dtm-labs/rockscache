@@ -3,6 +3,7 @@ package rockscache
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"time"
@@ -193,10 +194,25 @@ func (c *Client) weakFetch(ctx context.Context, key string, expire time.Duration
 	debugf("weakFetch: key=%s", key)
 	owner := shortuuid.New()
 	r, err := c.luaGet(ctx, key, owner)
+	ticker := time.NewTimer(c.Options.LockSleep)
+	defer ticker.Stop()
 	for err == nil && r[0] == nil && r[1].(string) != locked {
 		debugf("empty result for %s locked by other, so sleep %s", key, c.Options.LockSleep.String())
-		time.Sleep(c.Options.LockSleep)
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-ticker.C:
+			log.Printf("ticker")
+			// equal to time.Sleep(c.Options.LockSleep) but can be canceled
+		}
 		r, err = c.luaGet(ctx, key, owner)
+		// Reset ticker after luaGet
+		// If we reset ticker before luaGet, since luaGet takes a period of time,
+		// the actual sleep time will be shorter than expected
+		if !ticker.Stop() && len(ticker.C) > 0 {
+			<-ticker.C
+		}
+		ticker.Reset(c.Options.LockSleep)
 	}
 	if err != nil {
 		return "", err
@@ -217,10 +233,25 @@ func (c *Client) strongFetch(ctx context.Context, key string, expire time.Durati
 	debugf("strongFetch: key=%s", key)
 	owner := shortuuid.New()
 	r, err := c.luaGet(ctx, key, owner)
+	ticker := time.NewTimer(c.Options.LockSleep)
+	defer ticker.Stop()
 	for err == nil && r[1] != nil && r[1] != locked { // locked by other
 		debugf("locked by other, so sleep %s", c.Options.LockSleep)
-		time.Sleep(c.Options.LockSleep)
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-ticker.C:
+			log.Printf("ticker")
+			// equal to time.Sleep(c.Options.LockSleep) but can be canceled
+		}
 		r, err = c.luaGet(ctx, key, owner)
+		// Reset ticker after luaGet
+		// If we reset ticker before luaGet, since luaGet takes a period of time,
+		// the actual sleep time will be shorter than expected
+		if !ticker.Stop() && len(ticker.C) > 0 {
+			<-ticker.C
+		}
+		ticker.Reset(c.Options.LockSleep)
 	}
 	if err != nil {
 		return "", err
