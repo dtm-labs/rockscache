@@ -19,22 +19,7 @@ var (
 )
 
 func (c *Client) luaGetBatch(ctx context.Context, keys []string, owner string) ([]interface{}, error) {
-	res, err := callLua(ctx, c.rdb, `-- luaGetBatch
-    local rets = {}
-    for i, key in ipairs(KEYS)
-    do
-        local v = redis.call('HGET', key, 'value')
-        local lu = redis.call('HGET', key, 'lockUntil')
-        if lu ~= false and tonumber(lu) < tonumber(ARGV[1]) or lu == false and v == false then
-            redis.call('HSET', key, 'lockUntil', ARGV[2])
-            redis.call('HSET', key, 'lockOwner', ARGV[3])
-            table.insert(rets, { v, 'LOCKED' })
-        else
-            table.insert(rets, {v, lu})
-        end
-    end
-    return rets
-	`, keys, []interface{}{now(), now() + int64(c.Options.LockExpire/time.Second), owner})
+	res, err := callLua(ctx, c.rdb, getBatchScript, keys, []interface{}{now(), now() + int64(c.Options.LockExpire/time.Second), owner})
 	debugf("luaGetBatch return: %v, %v", res, err)
 	if err != nil {
 		return nil, err
@@ -51,20 +36,7 @@ func (c *Client) luaSetBatch(ctx context.Context, keys []string, values []string
 	for _, ex := range expires {
 		vals = append(vals, ex)
 	}
-	_, err := callLua(ctx, c.rdb, `-- luaSetBatch
-    local n = #KEYS
-    for i, key in ipairs(KEYS)
-    do
-        local o = redis.call('HGET', key, 'lockOwner')
-        if o ~= ARGV[1] then
-                return
-        end
-        redis.call('HSET', key, 'value', ARGV[i+1])
-        redis.call('HDEL', key, 'lockUntil')
-        redis.call('HDEL', key, 'lockOwner')
-        redis.call('EXPIRE', key, ARGV[i+1+n])
-    end
-	`, keys, vals)
+	_, err := callLua(ctx, c.rdb, setBatchScript, keys, vals)
 	return err
 }
 
@@ -409,14 +381,8 @@ func (c *Client) TagAsDeletedBatch2(ctx context.Context, keys []string) error {
 		return nil
 	}
 	debugf("batch deleting: keys=%v", keys)
-	luaFn := func(con redisConn) error {
-		_, err := callLua(ctx, con, ` -- luaDeleteBatch
-		for i, key in ipairs(KEYS) do
-			redis.call('HSET', key, 'lockUntil', 0)
-			redis.call('HDEL', key, 'lockOwner')
-			redis.call('EXPIRE', key, ARGV[1])
-		end
-		`, keys, []interface{}{int64(c.Options.Delay / time.Second)})
+	luaFn := func(con redis.Scripter) error {
+		_, err := callLua(ctx, con, deleteBatchScript, keys, []interface{}{int64(c.Options.Delay / time.Second)})
 		return err
 	}
 	if c.Options.WaitReplicas > 0 {
