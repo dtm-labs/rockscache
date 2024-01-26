@@ -65,6 +65,7 @@ func TestWeakFetch(t *testing.T) {
 
 	clearCache()
 	began := time.Now()
+	// nolint: goconst
 	expected := "value1"
 	go func() {
 		dc2 := NewClient(rdb, NewDefaultOptions())
