@@ -296,6 +296,7 @@ func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire tim
 					select {
 					case <-ctx.Done():
 						ch <- pair{idx: i, err: ctx.Err()}
+						return
 					case <-ticker.C:
 						// equal to time.Sleep(c.Options.LockSleep) but can be canceled
 					}

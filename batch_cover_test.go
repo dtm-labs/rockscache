@@ -123,3 +123,70 @@ func TestTagAsDeletedBatchWait(t *testing.T) {
 		assert.Error(t, err, fmt.Errorf("wait replicas 1 failed. result replicas: 0"))
 	}
 }
+
+func TestWeakFetchBatchCanceled(t *testing.T) {
+	clearCache()
+	rc := NewClient(rdb, NewDefaultOptions())
+	n := int(rand.Int31n(20) + 10)
+	idxs := genIdxs(n)
+	keys, values1, values2 := genKeys(idxs), genValues(n, "value_"), genValues(n, "eulav_")
+	values3 := genValues(n, "vvvv_")
+	go func() {
+		dc2 := NewClient(rdb, NewDefaultOptions())
+		v, err := dc2.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values1, 400))
+		assert.Nil(t, err)
+		assert.Equal(t, values1, v)
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	began := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values2, 200))
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+
+	ctx, cancel = context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+	began = time.Now()
+	_, err = rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values3, 200))
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+}
+
+func TestStrongFetchBatchCanceled(t *testing.T) {
+	clearCache()
+	rc := NewClient(rdb, NewDefaultOptions())
+	rc.Options.StrongConsistency = true
+	n := int(rand.Int31n(20) + 10)
+	idxs := genIdxs(n)
+	keys, values1, values2 := genKeys(idxs), genValues(n, "value_"), genValues(n, "eulav_")
+	values3 := genValues(n, "vvvv_")
+	go func() {
+		dc2 := NewClient(rdb, NewDefaultOptions())
+		v, err := dc2.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values1, 400))
+		assert.Nil(t, err)
+		assert.Equal(t, values1, v)
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	began := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values2, 200))
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+
+	ctx, cancel = context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+	began = time.Now()
+	_, err = rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values3, 200))
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+}

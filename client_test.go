@@ -147,6 +147,37 @@ func TestStrongErrorFetch(t *testing.T) {
 	assert.True(t, time.Since(began) < time.Duration(150)*time.Millisecond)
 }
 
+func TestStrongFetchCanceled(t *testing.T) {
+	clearCache()
+	rc := NewClient(rdb, NewDefaultOptions())
+	rc.Options.StrongConsistency = true
+	expected := "value1"
+	go func() {
+		dc2 := NewClient(rdb, NewDefaultOptions())
+		v, err := dc2.Fetch(rdbKey, 60*time.Second, genDataFunc(expected, 400))
+		assert.Nil(t, err)
+		assert.Equal(t, expected, v)
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	began := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := rc.Fetch2(ctx, rdbKey, 60*time.Second, genDataFunc(expected, 200))
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+
+	ctx, cancel = context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+	began = time.Now()
+	_, err = rc.Fetch2(ctx, rdbKey, 60*time.Second, genDataFunc(expected, 200))
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+}
+
 func TestWeakErrorFetch(t *testing.T) {
 	rc := NewClient(rdb, NewDefaultOptions())
 
@@ -163,6 +194,37 @@ func TestWeakErrorFetch(t *testing.T) {
 	_, err = rc.Fetch(rdbKey, 60*time.Second, getFn)
 	assert.Nil(t, err)
 	assert.True(t, time.Since(began) < time.Duration(150)*time.Millisecond)
+}
+
+func TestWeakFetchCanceled(t *testing.T) {
+	rc := NewClient(rdb, NewDefaultOptions())
+
+	clearCache()
+	expected := "value1"
+	go func() {
+		dc2 := NewClient(rdb, NewDefaultOptions())
+		v, err := dc2.Fetch(rdbKey, 60*time.Second, genDataFunc(expected, 400))
+		assert.Nil(t, err)
+		assert.Equal(t, expected, v)
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	began := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	_, err := rc.Fetch2(ctx, rdbKey, 60*time.Second, genDataFunc(expected, 200))
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+
+	ctx, cancel = context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+	began = time.Now()
+	_, err = rc.Fetch2(ctx, rdbKey, 60*time.Second, genDataFunc(expected, 200))
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
 }
 
 func TestRawGet(t *testing.T) {
