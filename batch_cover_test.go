@@ -133,28 +133,28 @@ func TestWeakFetchBatchCanceled(t *testing.T) {
 	values3 := genValues(n, "vvvv_")
 	go func() {
 		dc2 := NewClient(rdb, NewDefaultOptions())
-		v, err := dc2.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values1, 400))
+		v, err := dc2.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values1, 450))
 		assert.Nil(t, err)
 		assert.Equal(t, values1, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
 	began := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	_, err := rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values2, 200))
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		cancel()
 	}()
 	began = time.Now()
 	_, err = rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values3, 200))
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
 }
 
 func TestStrongFetchBatchCanceled(t *testing.T) {
@@ -167,26 +167,26 @@ func TestStrongFetchBatchCanceled(t *testing.T) {
 	values3 := genValues(n, "vvvv_")
 	go func() {
 		dc2 := NewClient(rdb, NewDefaultOptions())
-		v, err := dc2.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values1, 400))
+		v, err := dc2.FetchBatch(keys, 60*time.Second, genBatchDataFunc(values1, 450))
 		assert.Nil(t, err)
 		assert.Equal(t, values1, v)
 	}()
 	time.Sleep(20 * time.Millisecond)
 
 	began := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	_, err := rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values2, 200))
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		cancel()
 	}()
 	began = time.Now()
 	_, err = rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values3, 200))
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.True(t, time.Since(began) < time.Duration(110)*time.Millisecond)
+	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
 }
