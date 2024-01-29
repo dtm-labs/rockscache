@@ -144,7 +144,7 @@ func TestWeakFetchBatchCanceled(t *testing.T) {
 	defer cancel()
 	_, err := rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values2, 200))
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
+	assertEqualDuration(t, time.Duration(200)*time.Millisecond, time.Since(began))
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
@@ -154,7 +154,7 @@ func TestWeakFetchBatchCanceled(t *testing.T) {
 	began = time.Now()
 	_, err = rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values3, 200))
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
+	assertEqualDuration(t, time.Duration(200)*time.Millisecond, time.Since(began))
 }
 
 func TestStrongFetchBatchCanceled(t *testing.T) {
@@ -178,7 +178,7 @@ func TestStrongFetchBatchCanceled(t *testing.T) {
 	defer cancel()
 	_, err := rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values2, 200))
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
+	assertEqualDuration(t, time.Duration(200)*time.Millisecond, time.Since(began))
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
@@ -188,5 +188,5 @@ func TestStrongFetchBatchCanceled(t *testing.T) {
 	began = time.Now()
 	_, err = rc.FetchBatch2(ctx, keys, 60*time.Second, genBatchDataFunc(values3, 200))
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
+	assertEqualDuration(t, time.Duration(200)*time.Millisecond, time.Since(began))
 }

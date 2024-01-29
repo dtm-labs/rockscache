@@ -164,25 +164,16 @@ func (c *Client) weakFetchBatch(ctx context.Context, keys []string, expire time.
 			go func(i int) {
 				defer wg.Done()
 				r, err := c.luaGet(ctx, keys[i], owner)
-				ticker := time.NewTimer(c.Options.LockSleep)
-				defer ticker.Stop()
 				for err == nil && r[0] == nil && r[1].(string) != locked {
 					debugf("batch weak: empty result for %s locked by other, so sleep %s", keys[i], c.Options.LockSleep.String())
 					select {
 					case <-ctx.Done():
 						ch <- pair{idx: i, err: ctx.Err()}
 						return
-					case <-ticker.C:
+					case <-time.After(c.Options.LockSleep):
 						// equal to time.Sleep(c.Options.LockSleep) but can be canceled
 					}
 					r, err = c.luaGet(ctx, keys[i], owner)
-					// Reset ticker after luaGet
-					// If we reset ticker before luaGet, since luaGet takes a period of time,
-					// the actual sleep time will be shorter than expected
-					if !ticker.Stop() && len(ticker.C) > 0 {
-						<-ticker.C
-					}
-					ticker.Reset(c.Options.LockSleep)
 				}
 				if err != nil {
 					ch <- pair{idx: i, data: "", err: err}
@@ -289,25 +280,16 @@ func (c *Client) strongFetchBatch(ctx context.Context, keys []string, expire tim
 			go func(i int) {
 				defer wg.Done()
 				r, err := c.luaGet(ctx, keys[i], owner)
-				ticker := time.NewTimer(c.Options.LockSleep)
-				defer ticker.Stop()
 				for err == nil && r[1] != nil && r[1] != locked { // locked by other
 					debugf("batch: locked by other, so sleep %s", c.Options.LockSleep)
 					select {
 					case <-ctx.Done():
 						ch <- pair{idx: i, err: ctx.Err()}
 						return
-					case <-ticker.C:
+					case <-time.After(c.Options.LockSleep):
 						// equal to time.Sleep(c.Options.LockSleep) but can be canceled
 					}
 					r, err = c.luaGet(ctx, keys[i], owner)
-					// Reset ticker after luaGet
-					// If we reset ticker before luaGet, since luaGet takes a period of time,
-					// the actual sleep time will be shorter than expected
-					if !ticker.Stop() && len(ticker.C) > 0 {
-						<-ticker.C
-					}
-					ticker.Reset(c.Options.LockSleep)
 				}
 				if err != nil {
 					ch <- pair{idx: i, data: "", err: err}

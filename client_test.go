@@ -148,6 +148,16 @@ func TestStrongErrorFetch(t *testing.T) {
 	assert.True(t, time.Since(began) < time.Duration(150)*time.Millisecond)
 }
 
+func assertEqualDuration(t *testing.T, expected, actual time.Duration) {
+	t.Helper()
+	delta := expected - actual
+	if delta < 0 {
+		delta = -delta
+	}
+	t.Logf("expected=%s, actual=%s, delta=%s", expected, actual, delta)
+	assert.Less(t, delta, time.Duration(2)*time.Millisecond)
+}
+
 func TestStrongFetchCanceled(t *testing.T) {
 	clearCache()
 	rc := NewClient(rdb, NewDefaultOptions())
@@ -166,7 +176,7 @@ func TestStrongFetchCanceled(t *testing.T) {
 	defer cancel()
 	_, err := rc.Fetch2(ctx, rdbKey, 60*time.Second, genDataFunc(expected, 200))
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
+	assertEqualDuration(t, time.Duration(200)*time.Millisecond, time.Since(began))
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
@@ -176,7 +186,7 @@ func TestStrongFetchCanceled(t *testing.T) {
 	began = time.Now()
 	_, err = rc.Fetch2(ctx, rdbKey, 60*time.Second, genDataFunc(expected, 200))
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
+	assertEqualDuration(t, time.Duration(200)*time.Millisecond, time.Since(began))
 }
 
 func TestWeakErrorFetch(t *testing.T) {
@@ -215,7 +225,7 @@ func TestWeakFetchCanceled(t *testing.T) {
 	defer cancel()
 	_, err := rc.Fetch2(ctx, rdbKey, 60*time.Second, genDataFunc(expected, 200))
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
+	assertEqualDuration(t, time.Duration(200)*time.Millisecond, time.Since(began))
 
 	ctx, cancel = context.WithCancel(context.Background())
 	go func() {
@@ -225,7 +235,7 @@ func TestWeakFetchCanceled(t *testing.T) {
 	began = time.Now()
 	_, err = rc.Fetch2(ctx, rdbKey, 60*time.Second, genDataFunc(expected, 200))
 	assert.ErrorIs(t, err, context.Canceled)
-	assert.Less(t, time.Since(began), time.Duration(210)*time.Millisecond)
+	assertEqualDuration(t, time.Duration(200)*time.Millisecond, time.Since(began))
 }
 
 func TestRawGet(t *testing.T) {
