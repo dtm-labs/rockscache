@@ -148,6 +148,7 @@ func TestStrongErrorFetch(t *testing.T) {
 	assert.True(t, time.Since(began) < time.Duration(150)*time.Millisecond)
 }
 
+// nolint: unparam
 func assertEqualDuration(t *testing.T, expected, actual time.Duration) {
 	t.Helper()
 	delta := expected - actual
