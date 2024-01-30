@@ -3,6 +3,8 @@ package rockscache
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -262,4 +264,38 @@ func TestLock(t *testing.T) {
 	assert.Error(t, err)
 	err = rc.UnlockForUpdate(ctx, key, owner)
 	assert.Nil(t, err)
+}
+func TestFetchWithCodec(t *testing.T) {
+	type User struct {
+		Name string
+		Age  int
+	}
+
+	ctx := context.Background()
+	key := "test_key"
+	expire := time.Minute
+
+	u := &User{"John", 20}
+	rc := NewClient(rdb, NewDefaultOptions())
+
+	clearCache()
+	t.Run("success", func(t *testing.T) {
+		if err := rc.FetchWithCodec(ctx, key, expire, &User{}, func() (interface{}, error) {
+			return u, nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	clearCache()
+	t.Run("codec error", func(t *testing.T) {
+		codecErr := fmt.Errorf("encode error")
+		err := rc.FetchWithCodec(ctx, key, expire, &User{}, func() (interface{}, error) {
+			return &User{}, codecErr
+		})
+
+		if err == nil || !strings.Contains(codecErr.Error(), "encode error") {
+			t.Fatal("should return codec error")
+		}
+	})
 }
