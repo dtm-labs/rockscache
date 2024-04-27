@@ -345,6 +345,7 @@ func (c *Client) FetchBatch(keys []string, expire time.Duration, fn func(idxs []
 
 // FetchBatch2 is same with FetchBatch, except that a user defined context.Context can be provided.
 func (c *Client) FetchBatch2(ctx context.Context, keys []string, expire time.Duration, fn func(idxs []int) (map[int]string, error)) (map[int]string, error) {
+	keys = c.formatKeys(keys)
 	if c.Options.DisableCacheRead {
 		return fn(c.keysIdx(keys))
 	} else if c.Options.StrongConsistency {
@@ -360,6 +361,7 @@ func (c *Client) TagAsDeletedBatch(keys []string) error {
 
 // TagAsDeletedBatch2 a key list, the keys in list will expire after delay time.
 func (c *Client) TagAsDeletedBatch2(ctx context.Context, keys []string) error {
+	keys = c.formatKeys(keys)
 	if c.Options.DisableCacheDelete {
 		return nil
 	}
@@ -384,4 +386,13 @@ func (c *Client) TagAsDeletedBatch2(ctx context.Context, keys []string) error {
 		return err
 	}
 	return luaFn(c.rdb)
+}
+
+// formatKeys returns formatted keys
+func (c *Client) formatKeys(keys []string) []string {
+	formattedKeys := make([]string, len(keys))
+	for i, k := range keys {
+		formattedKeys[i] = c.formatKey(k)
+	}
+	return formattedKeys
 }

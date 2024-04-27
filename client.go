@@ -3,8 +3,10 @@ package rockscache
 import (
 	"context"
 	"fmt"
+	"github.com/jinzhu/copier"
 	"math"
 	"math/rand"
+	"reflect"
 	"time"
 
 	"github.com/lithammer/shortuuid"
@@ -46,6 +48,10 @@ type Options struct {
 	StrongConsistency bool
 	// Context for redis command
 	Context context.Context
+	// Prefix for redis key
+	Prefix string
+	// codec
+	Codec Codec
 }
 
 // NewDefaultOptions return default options
@@ -58,6 +64,7 @@ func NewDefaultOptions() Options {
 		RandomExpireAdjustment: 0.1,
 		WaitReplicasTimeout:    3000 * time.Millisecond,
 		Context:                context.Background(),
+		Codec:                  &codec{},
 	}
 }
 
@@ -92,6 +99,7 @@ func (c *Client) TagAsDeleted2(ctx context.Context, key string) error {
 	if c.Options.DisableCacheDelete {
 		return nil
 	}
+	key = c.formatKey(key)
 	debugf("deleting: key=%s", key)
 	luaFn := func(con redis.Scripter) error {
 		_, err := callLua(ctx, con, deleteScript, []string{key}, []interface{}{int64(c.Options.Delay / time.Second)})
@@ -124,6 +132,7 @@ func (c *Client) Fetch(key string, expire time.Duration, fn func() (string, erro
 // Fetch2 returns the value store in cache indexed by the key.
 // If the key doest not exists, call fn to get result, store it in cache, then return.
 func (c *Client) Fetch2(ctx context.Context, key string, expire time.Duration, fn func() (string, error)) (string, error) {
+	key = c.formatKey(key)
 	ex := expire - c.Options.Delay - time.Duration(rand.Float64()*c.Options.RandomExpireAdjustment*float64(expire))
 	v, err, _ := c.group.Do(key, func() (interface{}, error) {
 		if c.Options.DisableCacheRead {
@@ -221,11 +230,12 @@ func (c *Client) strongFetch(ctx context.Context, key string, expire time.Durati
 
 // RawGet returns the value store in cache indexed by the key, no matter if the key locked or not
 func (c *Client) RawGet(ctx context.Context, key string) (string, error) {
-	return c.rdb.HGet(ctx, key, "value").Result()
+	return c.rdb.HGet(ctx, c.formatKey(key), "value").Result()
 }
 
 // RawSet sets the value store in cache indexed by the key, no matter if the key locked or not
 func (c *Client) RawSet(ctx context.Context, key string, value string, expire time.Duration) error {
+	key = c.formatKey(key)
 	err := c.rdb.HSet(ctx, key, "value", value).Err()
 	if err == nil {
 		err = c.rdb.Expire(ctx, key, expire).Err()
@@ -247,4 +257,53 @@ func (c *Client) LockForUpdate(ctx context.Context, key string, owner string) er
 func (c *Client) UnlockForUpdate(ctx context.Context, key string, owner string) error {
 	_, err := callLua(ctx, c.rdb, unlockScript, []string{key}, []interface{}{owner, c.Options.LockExpire / time.Second})
 	return err
+}
+
+// formatKey returns the key with prefix
+func (c *Client) formatKey(key string) string {
+	return c.Options.Prefix + key
+}
+
+// FetchWithCodec fetches the value from cache and encode the result using codec
+func (c *Client) FetchWithCodec(ctx context.Context, key string, expire time.Duration, res any, fn func() (any, error)) error {
+	expirationAdjustment := time.Duration(rand.Float64() * c.Options.RandomExpireAdjustment * float64(expire))
+	ex := expire - c.Options.Delay - expirationAdjustment
+
+	fetch, err, _ := c.group.Do(key, func() (any, error) {
+		if c.Options.DisableCacheRead {
+			return fn()
+		}
+
+		fetchFunc := func() (string, error) {
+			val, err := fn()
+			if err != nil {
+				return "", err
+			}
+			bs, err := c.Options.Codec.Encode(val)
+			if err != nil {
+				return "", err
+			}
+			return string(bs), nil
+		}
+
+		if c.Options.StrongConsistency {
+			return c.strongFetch(ctx, key, ex, fetchFunc)
+		}
+		return c.weakFetch(ctx, key, ex, fetchFunc)
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if reflect.TypeOf(res) == reflect.TypeOf(fetch) {
+		return copier.CopyWithOption(res, fetch, copier.Option{DeepCopy: true})
+	}
+
+	switch val := res.(type) {
+	case string:
+		return c.Options.Codec.Decode([]byte(val), res)
+	default:
+		return fmt.Errorf("invalid type returned from cache fetch: %T", res)
+	}
 }
