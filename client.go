@@ -68,7 +68,7 @@ type Client struct {
 	group   singleflight.Group
 }
 
-// Rdb returns the Redis client
+// Rdb return the Redis client
 func (c *Client) Rdb() redis.UniversalClient {
 	return c.rdb
 }
