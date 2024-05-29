@@ -61,14 +61,14 @@ func NewDefaultOptions() Options {
 	}
 }
 
-// Client delay client
+// Client delay client.
 type Client struct {
 	rdb     redis.UniversalClient
 	Options Options
 	group   singleflight.Group
 }
 
-// Rdb return the Redis client
+// Rdb return the Redis client.
 func (c *Client) Rdb() redis.UniversalClient {
 	return c.rdb
 }
