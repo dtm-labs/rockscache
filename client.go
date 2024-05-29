@@ -68,6 +68,11 @@ type Client struct {
 	group   singleflight.Group
 }
 
+// Rdb returns the Redis client
+func (c *Client) Rdb() redis.UniversalClient {
+	return c.rdb
+}
+
 // NewClient return a new rockscache client
 // for each key, rockscache client store a hash set,
 // the hash set contains the following fields:
